@@ -9,8 +9,10 @@
   &__sky {
     position: absolute;
     inset: 0;
+    // Cool steel sky on top + warm lava glow rising from the bottom.
     background:
-      radial-gradient(80% 60% at 50% 0%, #2c4870 0%, #142244 55%, #060d20 100%);
+      radial-gradient(60% 30% at 50% 100%, rgba(255, 90, 24, .55) 0%, rgba(255, 90, 24, 0) 70%),
+      radial-gradient(80% 60% at 50% 0%, #1a2a4a 0%, #0e1830 55%, #04060f 100%);
   }
 
   &__snow {
@@ -80,9 +82,12 @@
     transform: translateX(-50%);
     width: 22px;
     height: 30px;
-    border-radius: 50%;
-    background: linear-gradient(180deg, #2a3854 0%, #11203a 100%);
-    box-shadow: inset -3px -4px 6px rgba(0,0,0,.40), inset 4px 3px 4px rgba(255,255,255,.10);
+    border-radius: 5px 5px 6px 6px;
+    background: linear-gradient(180deg, #3a4660 0%, #1a2438 100%);
+    box-shadow:
+      inset -3px -4px 6px rgba(0,0,0,.40),
+      inset 4px 3px 4px rgba(255,255,255,.14),
+      0 0 4px rgba(80, 200, 255, .12);
   }
   &__fighter-belt {
     position: absolute;

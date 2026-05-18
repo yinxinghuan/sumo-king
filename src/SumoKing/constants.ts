@@ -41,13 +41,14 @@ export const CAMERA_FOV = 55;
 // to read the field and start charging.
 export const GRACE_PERIOD = 1.5;
 
-// Fighter color palette — player is always slot 0 (the rim around them is
-// distinct gold so the player can pick themselves out at a glance).
+// Mecha palette — each fighter has a chassis tone + chest plate + LED
+// stripe color. Player slot 0 gets the cyan LED so they stand out against
+// the warm lava periphery.
 export const FIGHTER_COLORS = [
-  { body: '#1a2030', belly: '#f4f4f4', belt: '#ffd84a' }, // player — gold belt
-  { body: '#3a1f1f', belly: '#e8d8c8', belt: '#ff5b3a' }, // Rookie  — red belt
-  { body: '#1f2a1f', belly: '#e8e8d8', belt: '#54ff8e' }, // Bruiser — green belt
-  { body: '#1a1838', belly: '#d8d8e8', belt: '#6fc6ff' }, // Sniper  — blue belt
+  { body: '#2a3445', chest: '#1a2030', belt: '#4afcff' }, // player — cyan LED
+  { body: '#3a2826', chest: '#241410', belt: '#ff5b3a' }, // Rookie  — red LED
+  { body: '#2a3a26', chest: '#10241a', belt: '#54ff8e' }, // Bruiser — green LED
+  { body: '#382a3a', chest: '#1a1024', belt: '#ff62d2' }, // Sniper  — magenta LED
 ];
 
 export type AiKind = 'rookie' | 'bruiser' | 'sniper';

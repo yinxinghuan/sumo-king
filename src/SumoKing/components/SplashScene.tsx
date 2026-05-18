@@ -13,10 +13,10 @@ interface Snowflake {
 }
 
 const SPLASH_FIGHTERS = [
-  { color: '#ffd84a', x: 50, y: 80 },  // player (bottom)
-  { color: '#ff5b3a', x: 18, y: 60 },  // rookie (left)
-  { color: '#54ff8e', x: 82, y: 60 },  // bruiser (right)
-  { color: '#6fc6ff', x: 50, y: 38 },  // sniper (top)
+  { color: '#4afcff', x: 50, y: 80 },  // player (bottom) — cyan
+  { color: '#ff5b3a', x: 18, y: 60 },  // rookie (left)   — red
+  { color: '#54ff8e', x: 82, y: 60 },  // bruiser (right) — green
+  { color: '#ff62d2', x: 50, y: 38 },  // sniper (top)    — magenta
 ];
 
 export function SplashScene({ onStart, highScore }: { onStart: () => void; highScore: number }) {

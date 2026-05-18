@@ -86,16 +86,17 @@ export function playSfx(key: SfxKey) {
       tone(120, 'sawtooth', 0.18, 0.10, t, 240);
       break;
     case 'dash':
-      // Release: short whoosh + thud
-      noiseBurst(0.18, 0.18, t,        2800, 600);
-      tone(180, 'sawtooth', 0.18, 0.22, t, 90);
-      tone(420, 'triangle', 0.10, 0.10, t, 200);
+      // Electric thrust — plasma whine + servo punch
+      tone(1100, 'sawtooth', 0.18, 0.18, t, 280);    // descending plasma whine
+      tone(180,  'sawtooth', 0.18, 0.20, t, 90);     // low servo
+      noiseBurst(0.16, 0.16, t,        3500, 1200);  // air crackle
       break;
     case 'collide':
-      // Heavy bonk — low thump + mid noise burst
-      tone(85, 'sine',     0.16, 0.45, t, 40);
-      tone(220, 'sawtooth', 0.10, 0.20, t, 110);
-      noiseBurst(0.22, 0.30, t,       1400);
+      // Metallic clang — low thud + ringing harmonic + sharp transient
+      tone(85,   'sine',     0.20, 0.45, t, 40);
+      tone(380,  'triangle', 0.30, 0.18, t,        220);  // ring
+      tone(1400, 'square',   0.06, 0.20, t,        700);  // strike
+      noiseBurst(0.22, 0.28, t,       1800, 400);
       break;
     case 'ko':
       // Celebratory chime — minor->major leap

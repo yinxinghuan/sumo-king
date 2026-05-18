@@ -36,47 +36,83 @@ function ArenaCamera() {
   return null;
 }
 
-// Arena floor (ice disc with a colored ring at the danger band). Static.
+// Mecha arena — brushed steel platform over an animated lava bed. Cyan
+// neon rim trims the safe area; magenta marks the danger band.
 function Arena() {
+  const lavaMat = useRef<THREE.MeshStandardMaterial>(null);
+  useFrame(({ clock }) => {
+    if (lavaMat.current) {
+      const t = clock.getElapsedTime();
+      // Pulse the lava glow so the pit feels alive.
+      lavaMat.current.emissiveIntensity = 1.4 + Math.sin(t * 1.2) * 0.35 + Math.sin(t * 3.7) * 0.12;
+    }
+  });
   return (
     <group>
-      {/* dark water/void surrounding the platform */}
-      <mesh position={[0, -0.2, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+      {/* Lava pit beneath the platform — bright emissive */}
+      <mesh position={[0, -0.4, 0]} rotation={[-Math.PI / 2, 0, 0]}>
         <circleGeometry args={[80, 64]} />
-        <meshStandardMaterial color="#0a1430" roughness={1} />
+        <meshStandardMaterial
+          ref={lavaMat}
+          color="#3a0c08"
+          emissive="#ff5a18"
+          emissiveIntensity={1.4}
+          roughness={0.85}
+        />
       </mesh>
-      {/* platform under-edge — slightly darker, lifted */}
-      <mesh position={[0, -0.06, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-        <circleGeometry args={[ARENA_RADIUS + 0.2, 64]} />
-        <meshStandardMaterial color="#234a76" roughness={1} />
+      {/* Outer ring of charred slag right under the platform edge */}
+      <mesh position={[0, -0.08, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+        <circleGeometry args={[ARENA_RADIUS + 0.4, 64]} />
+        <meshStandardMaterial color="#1a0a08" roughness={1} />
       </mesh>
-      {/* platform top — ice */}
+      {/* Platform top — brushed steel */}
       <mesh position={[0, 0, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
         <circleGeometry args={[ARENA_RADIUS, 64]} />
-        <meshStandardMaterial color="#c0d8ea" roughness={0.75} metalness={0.05} />
+        <meshStandardMaterial color="#3a4250" roughness={0.55} metalness={0.55} />
       </mesh>
-      {/* danger band (DANGER_RADIUS..ARENA_RADIUS) — subtle warning red */}
+      {/* Inner platform pattern — center disc lifted slightly with a darker
+          grate finish for visual interest. */}
       <mesh position={[0, 0.005, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-        <ringGeometry args={[DANGER_RADIUS, ARENA_RADIUS, 64]} />
-        <meshBasicMaterial color="#ff7a55" transparent opacity={0.18} depthWrite={false} blending={THREE.AdditiveBlending} />
+        <circleGeometry args={[ARENA_RADIUS * 0.55, 48]} />
+        <meshStandardMaterial color="#2c3440" roughness={0.5} metalness={0.65} />
       </mesh>
-      {/* arena rim — a thin torus highlight */}
-      <mesh position={[0, 0.01, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-        <ringGeometry args={[ARENA_RADIUS - 0.10, ARENA_RADIUS, 64]} />
-        <meshBasicMaterial color="#7fc4ff" transparent opacity={0.65} depthWrite={false} blending={THREE.AdditiveBlending} />
+      {/* Cross-shape decals on the deck for orientation */}
+      {[0, Math.PI / 2].map((rot, i) => (
+        <mesh key={i} position={[0, 0.012, 0]} rotation={[-Math.PI / 2, 0, rot]}>
+          <planeGeometry args={[ARENA_RADIUS * 0.10, ARENA_RADIUS * 1.8]} />
+          <meshStandardMaterial color="#1f2530" roughness={0.6} metalness={0.4} />
+        </mesh>
+      ))}
+      {/* Danger band — magenta neon strip */}
+      <mesh position={[0, 0.015, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+        <ringGeometry args={[DANGER_RADIUS, ARENA_RADIUS - 0.15, 64]} />
+        <meshBasicMaterial color="#ff36a8" transparent opacity={0.45} depthWrite={false} blending={THREE.AdditiveBlending} />
+      </mesh>
+      {/* Outer rim — cyan neon */}
+      <mesh position={[0, 0.020, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+        <ringGeometry args={[ARENA_RADIUS - 0.12, ARENA_RADIUS, 64]} />
+        <meshBasicMaterial color="#36e4ff" transparent opacity={0.85} depthWrite={false} blending={THREE.AdditiveBlending} />
+      </mesh>
+      {/* A faint lava-glow halo right outside the platform (gives the
+          edge a "danger heat" lift even before fighters get pushed off) */}
+      <mesh position={[0, 0.025, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+        <ringGeometry args={[ARENA_RADIUS, ARENA_RADIUS + 1.6, 64]} />
+        <meshBasicMaterial color="#ff8838" transparent opacity={0.45} depthWrite={false} blending={THREE.AdditiveBlending} />
       </mesh>
     </group>
   );
 }
 
-// A single penguin fighter. Bounces up + down with `bounceRef`, the
-// contact shadow stays on the floor outside the bounce so the leap reads.
-function PenguinFighter({ fighter }: { fighter: Fighter }) {
+// A single mecha fighter. Chassis is steel boxes + a sensor-eye sphere +
+// antenna. The belt is now a glowing LED stripe around the waist matching
+// the fighter's color slot. Bounce + lean animation preserved from v0.
+function MechaFighter({ fighter }: { fighter: Fighter }) {
   const palette = FIGHTER_COLORS[fighter.paletteIdx % FIGHTER_COLORS.length];
   const groupRef = useRef<THREE.Group>(null);
   const bounceRef = useRef<THREE.Group>(null);
   const chargeRingRef = useRef<THREE.Mesh>(null);
   const chargeRingMat = useRef<THREE.MeshBasicMaterial>(null);
+  const sensorRef = useRef<THREE.MeshStandardMaterial>(null);
   useFrame(({ clock }) => {
     if (!groupRef.current) return;
     if (fighter.state === 'down') {
@@ -87,33 +123,43 @@ function PenguinFighter({ fighter }: { fighter: Fighter }) {
     groupRef.current.position.copy(fighter.pos);
     groupRef.current.rotation.y = fighter.rot;
 
-    // Bounce — faster when moving / dashing
     if (bounceRef.current) {
       const t = clock.getElapsedTime();
       const speed = Math.hypot(fighter.vel.x, fighter.vel.z);
       const moveFactor = Math.min(1, speed / 8);
       const hopT = t * (5.0 + moveFactor * 2.5) + fighter.id;
-      const hopHeight = 0.16 + moveFactor * 0.18;
+      const hopHeight = 0.10 + moveFactor * 0.16;
+      // Mecha bobs less than a penguin — more "servo strut" than "hop"
       bounceRef.current.position.y = Math.abs(Math.sin(hopT)) * hopHeight;
-      bounceRef.current.rotation.z = Math.sin(hopT) * (0.05 + moveFactor * 0.10);
-      // Slight forward lean when dashing
+      bounceRef.current.rotation.z = Math.sin(hopT) * (0.04 + moveFactor * 0.08);
       const lean = fighter.state === 'dashing' ? 0.35 : 0;
       bounceRef.current.rotation.x = lean;
     }
 
-    // Charge ring under the fighter
+    // Sensor eye breathes when charging — pulses brighter as charge fills.
+    if (sensorRef.current) {
+      if (fighter.state === 'charging') {
+        const f = Math.min(1, fighter.chargeT / CHARGE_TIME_TO_FULL);
+        sensorRef.current.emissiveIntensity = 1.5 + f * 2.8 + Math.sin(clock.getElapsedTime() * 14) * 0.4;
+      } else if (fighter.state === 'dashing') {
+        sensorRef.current.emissiveIntensity = 4.0;
+      } else {
+        sensorRef.current.emissiveIntensity = 1.5;
+      }
+    }
+
     if (chargeRingRef.current && chargeRingMat.current) {
       const charging = fighter.state === 'charging';
       chargeRingRef.current.visible = charging;
       if (charging) {
         const f = Math.min(1, fighter.chargeT / CHARGE_TIME_TO_FULL);
-        chargeRingRef.current.scale.set(0.6 + f * 1.0, 1, 0.6 + f * 1.0);
-        // Color shifts from yellow (low) → orange → red (full)
-        const r = 255;
-        const g = Math.floor(220 - f * 180);
-        const b = Math.floor(80 - f * 80);
+        chargeRingRef.current.scale.set(0.6 + f * 1.1, 1, 0.6 + f * 1.1);
+        // Cyan (low) → magenta (mid) → red plasma (full)
+        const r = Math.floor(60 + f * 195);
+        const g = Math.floor(220 - f * 200);
+        const b = Math.floor(255 - f * 175);
         chargeRingMat.current.color.setRGB(r / 255, g / 255, b / 255);
-        chargeRingMat.current.opacity = 0.55 + f * 0.35;
+        chargeRingMat.current.opacity = 0.60 + f * 0.35;
       }
     }
   });
@@ -121,72 +167,87 @@ function PenguinFighter({ fighter }: { fighter: Fighter }) {
     <group ref={groupRef}>
       {/* Contact shadow stays on the floor */}
       <mesh position={[0, 0.02, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-        <circleGeometry args={[FIGHTER_RADIUS * 0.8, 22]} />
-        <meshBasicMaterial color="#000" transparent opacity={0.35} />
+        <circleGeometry args={[FIGHTER_RADIUS * 0.85, 22]} />
+        <meshBasicMaterial color="#000" transparent opacity={0.40} />
       </mesh>
       {/* Charge ring — only shown while charging */}
       <mesh ref={chargeRingRef} position={[0, 0.04, 0]} rotation={[-Math.PI / 2, 0, 0]} visible={false}>
         <ringGeometry args={[FIGHTER_RADIUS * 1.05, FIGHTER_RADIUS * 1.40, 36]} />
-        <meshBasicMaterial ref={chargeRingMat} color="#ffd84a" transparent opacity={0.7} depthWrite={false} blending={THREE.AdditiveBlending} />
+        <meshBasicMaterial ref={chargeRingMat} color={palette.belt} transparent opacity={0.7} depthWrite={false} blending={THREE.AdditiveBlending} />
       </mesh>
       <group ref={bounceRef}>
-        {/* Body — chubby penguin: rounded box base + sphere head + cone beak */}
-        <RoundedBox args={[0.92, 0.78, 0.78]} radius={0.34} smoothness={5} position={[0, 0.55, 0]} castShadow>
-          <meshStandardMaterial color={palette.body} roughness={0.85} />
+        {/* Lower hull — wider base */}
+        <mesh position={[0, 0.32, 0]} castShadow>
+          <cylinderGeometry args={[0.48, 0.52, 0.30, 10]} />
+          <meshStandardMaterial color={palette.body} roughness={0.55} metalness={0.50} />
+        </mesh>
+        {/* Mid chassis — chest plate (square + slight bevel via two boxes) */}
+        <RoundedBox args={[0.92, 0.65, 0.78]} radius={0.10} smoothness={3} position={[0, 0.75, 0]} castShadow>
+          <meshStandardMaterial color={palette.body} roughness={0.50} metalness={0.55} />
         </RoundedBox>
-        {/* Belly — flatter rounded box overlay */}
-        <RoundedBox args={[0.62, 0.62, 0.30]} radius={0.20} smoothness={5} position={[0, 0.52, 0.30]} castShadow>
-          <meshStandardMaterial color={palette.belly} roughness={0.9} />
+        {/* Inner chest plate — darker accent on the front */}
+        <RoundedBox args={[0.66, 0.46, 0.24]} radius={0.06} smoothness={3} position={[0, 0.78, 0.32]}>
+          <meshStandardMaterial color={palette.chest} roughness={0.45} metalness={0.6} />
         </RoundedBox>
-        {/* Head */}
-        <mesh position={[0, 1.10, 0]} castShadow>
-          <sphereGeometry args={[0.30, 16, 12]} />
-          <meshStandardMaterial color={palette.body} roughness={0.8} />
+        {/* LED stripe — wraps the chest seam, glows in belt color */}
+        <mesh position={[0, 0.46, 0]} rotation={[Math.PI / 2, 0, 0]}>
+          <torusGeometry args={[0.50, 0.045, 6, 24]} />
+          <meshStandardMaterial color={palette.belt} emissive={palette.belt} emissiveIntensity={1.6} roughness={0.4} metalness={0.3} />
         </mesh>
-        {/* Beak */}
-        <mesh position={[0, 1.05, 0.30]} rotation={[Math.PI / 2, 0, 0]}>
-          <coneGeometry args={[0.08, 0.18, 10]} />
-          <meshStandardMaterial color="#ffae3a" roughness={0.6} />
+        {/* Shoulder bumpers */}
+        <mesh position={[-0.50, 1.00, 0]} castShadow>
+          <sphereGeometry args={[0.20, 14, 10]} />
+          <meshStandardMaterial color={palette.chest} roughness={0.55} metalness={0.55} />
         </mesh>
-        {/* Eyes */}
-        <mesh position={[-0.10, 1.18, 0.22]}>
-          <sphereGeometry args={[0.05, 10, 8]} />
-          <meshStandardMaterial color="#ffffff" />
+        <mesh position={[0.50, 1.00, 0]} castShadow>
+          <sphereGeometry args={[0.20, 14, 10]} />
+          <meshStandardMaterial color={palette.chest} roughness={0.55} metalness={0.55} />
         </mesh>
-        <mesh position={[0.10, 1.18, 0.22]}>
-          <sphereGeometry args={[0.05, 10, 8]} />
-          <meshStandardMaterial color="#ffffff" />
+        {/* Head — boxy dome */}
+        <mesh position={[0, 1.32, 0]} castShadow>
+          <boxGeometry args={[0.45, 0.36, 0.42]} />
+          <meshStandardMaterial color={palette.body} roughness={0.45} metalness={0.55} />
         </mesh>
-        <mesh position={[-0.10, 1.18, 0.265]}>
-          <sphereGeometry args={[0.025, 8, 6]} />
-          <meshStandardMaterial color="#0a0a0a" />
+        {/* Sensor eye visor — single glowing band across the face */}
+        <mesh position={[0, 1.33, 0.215]}>
+          <boxGeometry args={[0.34, 0.10, 0.02]} />
+          <meshStandardMaterial ref={sensorRef} color="#ffffff" emissive={palette.belt} emissiveIntensity={1.5} />
         </mesh>
-        <mesh position={[0.10, 1.18, 0.265]}>
-          <sphereGeometry args={[0.025, 8, 6]} />
-          <meshStandardMaterial color="#0a0a0a" />
+        {/* Antenna */}
+        <mesh position={[0, 1.62, -0.10]} rotation={[0.18, 0, 0]}>
+          <cylinderGeometry args={[0.018, 0.018, 0.30, 6]} />
+          <meshStandardMaterial color="#181c24" roughness={0.6} metalness={0.5} />
         </mesh>
-        {/* Belt — colored ring around the waist for identification */}
-        <mesh position={[0, 0.30, 0]} rotation={[Math.PI / 2, 0, 0]}>
-          <torusGeometry args={[0.50, 0.06, 8, 22]} />
-          <meshStandardMaterial color={palette.belt} emissive={palette.belt} emissiveIntensity={0.5} roughness={0.5} />
+        <mesh position={[0, 1.78, -0.13]}>
+          <sphereGeometry args={[0.04, 8, 6]} />
+          <meshStandardMaterial color={palette.belt} emissive={palette.belt} emissiveIntensity={1.8} />
         </mesh>
-        {/* Flipper-arms */}
-        <mesh position={[-0.52, 0.62, 0]} rotation={[0, 0, 0.35]}>
-          <boxGeometry args={[0.12, 0.45, 0.30]} />
-          <meshStandardMaterial color={palette.body} roughness={0.85} />
+        {/* Arms — chunky hydraulic pistons */}
+        <mesh position={[-0.55, 0.70, 0]} rotation={[0, 0, 0.18]}>
+          <cylinderGeometry args={[0.10, 0.10, 0.55, 10]} />
+          <meshStandardMaterial color={palette.chest} roughness={0.55} metalness={0.6} />
         </mesh>
-        <mesh position={[0.52, 0.62, 0]} rotation={[0, 0, -0.35]}>
-          <boxGeometry args={[0.12, 0.45, 0.30]} />
-          <meshStandardMaterial color={palette.body} roughness={0.85} />
+        <mesh position={[0.55, 0.70, 0]} rotation={[0, 0, -0.18]}>
+          <cylinderGeometry args={[0.10, 0.10, 0.55, 10]} />
+          <meshStandardMaterial color={palette.chest} roughness={0.55} metalness={0.6} />
         </mesh>
-        {/* Feet */}
-        <mesh position={[-0.20, 0.05, 0.10]}>
-          <boxGeometry args={[0.22, 0.10, 0.32]} />
-          <meshStandardMaterial color="#ffae3a" roughness={0.7} />
+        {/* Hands — squat fists */}
+        <mesh position={[-0.58, 0.40, 0]} castShadow>
+          <boxGeometry args={[0.20, 0.18, 0.22]} />
+          <meshStandardMaterial color={palette.body} roughness={0.5} metalness={0.55} />
         </mesh>
-        <mesh position={[0.20, 0.05, 0.10]}>
-          <boxGeometry args={[0.22, 0.10, 0.32]} />
-          <meshStandardMaterial color="#ffae3a" roughness={0.7} />
+        <mesh position={[0.58, 0.40, 0]} castShadow>
+          <boxGeometry args={[0.20, 0.18, 0.22]} />
+          <meshStandardMaterial color={palette.body} roughness={0.5} metalness={0.55} />
+        </mesh>
+        {/* Feet — wide pads */}
+        <mesh position={[-0.20, 0.08, 0.06]} castShadow>
+          <boxGeometry args={[0.28, 0.16, 0.40]} />
+          <meshStandardMaterial color={palette.chest} roughness={0.6} metalness={0.5} />
+        </mesh>
+        <mesh position={[0.20, 0.08, 0.06]} castShadow>
+          <boxGeometry args={[0.28, 0.16, 0.40]} />
+          <meshStandardMaterial color={palette.chest} roughness={0.6} metalness={0.5} />
         </mesh>
       </group>
     </group>
@@ -205,7 +266,7 @@ function Fighters({ state }: { state: React.MutableRefObject<GameRef> }) {
   return (
     <>
       {state.current.fighters.map(f => (
-        <PenguinFighter key={f.id} fighter={f} />
+        <MechaFighter key={f.id} fighter={f} />
       ))}
     </>
   );
@@ -282,13 +343,15 @@ export function Scene(props: SceneProps) {
   return (
     <>
       <ArenaCamera />
-      <fog attach="fog" args={['#0a1430', 30, 80]} />
-      <ambientLight intensity={0.55} color="#d8e8ff" />
-      <hemisphereLight args={['#a8c8ff', '#102030', 0.6]} />
+      {/* Warm lava-pit ambient bleeds up from below; cool industrial sky
+          fills the steel deck from above for a strong hot/cool contrast. */}
+      <fog attach="fog" args={['#1c0a08', 32, 86]} />
+      <ambientLight intensity={0.50} color="#dceaff" />
+      <hemisphereLight args={['#a8c4ff', '#ff5a18', 0.55]} />
       <directionalLight
         position={[12, 22, 8]}
-        intensity={1.25}
-        color="#fff4d8"
+        intensity={1.20}
+        color="#cfe2ff"
         castShadow
         shadow-mapSize-width={1024}
         shadow-mapSize-height={1024}
