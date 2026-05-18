@@ -124,6 +124,16 @@ export function SumoKing() {
       )}
       {showCanvas && <img className="sk__watermark" src={alteruSvg} alt="AlterU" />}
 
+      {/* Persistent control hint — always visible during play. Players who
+          don't read the splash card learn the verb here. Auto-dims after
+          the first dash so it doesn't fight the action. */}
+      {phase === 'playing' && (
+        <div className="sk__help">
+          <span className="sk__help-icon" />
+          <span><b>HOLD + DRAG</b>&nbsp;TO CHARGE&nbsp;&nbsp;·&nbsp;&nbsp;<b>RELEASE</b>&nbsp;TO DASH</span>
+        </div>
+      )}
+
       {/* KO banner — flashes when the player downs an opponent */}
       {koBanner && (
         <div className="sk__ko-banner" key={koBanner.key}>

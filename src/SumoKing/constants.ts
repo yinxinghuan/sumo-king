@@ -30,12 +30,13 @@ export const SCORE_PER_SECOND_SURVIVED = 1;
 export const AI_REACT_INTERVAL_MIN = 0.4;  // re-evaluate target every 0.4..1.0s
 export const AI_REACT_INTERVAL_MAX = 1.0;
 
-// Camera — higher than penguin-rescue so the whole arena fits.
-// Arena diameter 30, with safety margin → need ~36u visible width.
-// At y=28 with FOV 55, half-width = 28 * tan(27.5°) ≈ 14.6 → diameter 29.
-// y=30 gives diameter 31.2 — enough margin. Slight forward tilt (z=12).
-export const CAMERA_POS: [number, number, number] = [0, 30, 12];
-export const CAMERA_FOV = 55;
+// Camera — full follow with a near-overhead angle. The player stays
+// centered so they never run off-screen; the cyan rim of the arena is
+// clearly visible at the screen edge as they near the boundary.
+export const CAMERA_POS: [number, number, number] = [0, 30, 6];
+export const CAMERA_FOV = 65;
+export const CAMERA_FOLLOW = 1.0;
+export const CAMERA_LERP = 0.14;
 
 // Grace — players can't be KO'd in this opening window so they have time
 // to read the field and start charging.

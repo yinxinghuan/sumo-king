@@ -3,7 +3,8 @@ import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { RoundedBox } from '@react-three/drei';
 import {
-  CAMERA_FOV, CAMERA_POS, ARENA_RADIUS, DANGER_RADIUS,
+  CAMERA_FOV, CAMERA_POS, CAMERA_FOLLOW, CAMERA_LERP,
+  ARENA_RADIUS, DANGER_RADIUS,
   FIGHTER_COLORS, FIGHTER_RADIUS, CHARGE_TIME_TO_FULL,
 } from '../constants';
 import { useGameLoop, GameRef, SfxKey } from '../hooks/useGameLoop';
@@ -21,18 +22,32 @@ interface SceneProps {
   haptic?: (k: 'light' | 'heavy') => void;
 }
 
-// Fixed bird's-eye camera — no follow needed because all fighters share
-// the arena and the player should see the whole battle.
-function ArenaCamera() {
+// Soft-follow camera — anchored slightly toward the player so they never
+// hug the edge of the frame, but staying mostly centered on the arena so
+// the whole platform is visible. Player.pos × CAMERA_FOLLOW = target.
+function ArenaCamera({ state }: { state: React.MutableRefObject<GameRef> }) {
   const { camera, size } = useThree();
+  const offset = useRef(new THREE.Vector3(...CAMERA_POS));
+  const targetCur = useRef(new THREE.Vector3());
+  const lookAtCur = useRef(new THREE.Vector3());
   useEffect(() => {
-    camera.position.set(CAMERA_POS[0], CAMERA_POS[1], CAMERA_POS[2]);
     (camera as THREE.PerspectiveCamera).fov = CAMERA_FOV;
     (camera as THREE.PerspectiveCamera).near = 0.1;
     (camera as THREE.PerspectiveCamera).far = 200;
-    camera.lookAt(0, 0, 0);
     (camera as THREE.PerspectiveCamera).updateProjectionMatrix();
   }, [camera, size.width, size.height]);
+  useFrame(() => {
+    const player = state.current.fighters.find(f => f.isPlayer);
+    const px = player ? player.pos.x : 0;
+    const pz = player ? player.pos.z : 0;
+    // Soft follow — only shift partway toward the player.
+    const lookX = px * CAMERA_FOLLOW;
+    const lookZ = pz * CAMERA_FOLLOW;
+    targetCur.current.set(lookX + offset.current.x, offset.current.y, lookZ + offset.current.z);
+    camera.position.lerp(targetCur.current, CAMERA_LERP);
+    lookAtCur.current.set(lookX, 0, lookZ);
+    camera.lookAt(lookAtCur.current);
+  });
   return null;
 }
 
@@ -113,6 +128,14 @@ function MechaFighter({ fighter }: { fighter: Fighter }) {
   const chargeRingRef = useRef<THREE.Mesh>(null);
   const chargeRingMat = useRef<THREE.MeshBasicMaterial>(null);
   const sensorRef = useRef<THREE.MeshStandardMaterial>(null);
+  // Player-only persistent markers — pulsing ring on the floor + a
+  // downward arrow floating above the head so the player can instantly
+  // pick themselves out from the 3 identical-shape AI fighters.
+  const youRingRef = useRef<THREE.Mesh>(null);
+  const youRingMat = useRef<THREE.MeshBasicMaterial>(null);
+  const youArrowRef = useRef<THREE.Group>(null);
+  const aimArrowRef = useRef<THREE.Group>(null);
+  const aimArrowMat = useRef<THREE.MeshBasicMaterial>(null);
   useFrame(({ clock }) => {
     if (!groupRef.current) return;
     if (fighter.state === 'down') {
@@ -162,6 +185,36 @@ function MechaFighter({ fighter }: { fighter: Fighter }) {
         chargeRingMat.current.opacity = 0.60 + f * 0.35;
       }
     }
+
+    // YOU markers — only on the player
+    if (fighter.isPlayer) {
+      const t = clock.getElapsedTime();
+      if (youRingRef.current && youRingMat.current) {
+        const pulse = 0.65 + Math.sin(t * 4.0) * 0.20;
+        youRingRef.current.scale.set(pulse, 1, pulse);
+        youRingMat.current.opacity = 0.55 + Math.sin(t * 4.0) * 0.18;
+      }
+      if (youArrowRef.current) {
+        youArrowRef.current.position.y = 2.05 + Math.sin(t * 3.0) * 0.08;
+        youArrowRef.current.rotation.y = t * 1.5;
+      }
+      // Aim arrow — appears in front of the player only while charging,
+      // length scales with charge, color matches charge progression.
+      if (aimArrowRef.current && aimArrowMat.current) {
+        const charging = fighter.state === 'charging';
+        aimArrowRef.current.visible = charging;
+        if (charging) {
+          const f = Math.min(1, fighter.chargeT / CHARGE_TIME_TO_FULL);
+          // Arrow extends from radius 1.2 out to 1.2 + 2.5*charge
+          aimArrowRef.current.scale.set(1, 1, 0.5 + f * 2.0);
+          const r = Math.floor(60 + f * 195);
+          const g = Math.floor(220 - f * 200);
+          const b = Math.floor(255 - f * 175);
+          aimArrowMat.current.color.setRGB(r / 255, g / 255, b / 255);
+          aimArrowMat.current.opacity = 0.75 + f * 0.20;
+        }
+      }
+    }
   });
   return (
     <group ref={groupRef}>
@@ -170,6 +223,38 @@ function MechaFighter({ fighter }: { fighter: Fighter }) {
         <circleGeometry args={[FIGHTER_RADIUS * 0.85, 22]} />
         <meshBasicMaterial color="#000" transparent opacity={0.40} />
       </mesh>
+      {/* PLAYER-ONLY: pulsing cyan "YOU" ring on the floor */}
+      {fighter.isPlayer && (
+        <mesh ref={youRingRef} position={[0, 0.03, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+          <ringGeometry args={[FIGHTER_RADIUS * 1.50, FIGHTER_RADIUS * 1.85, 40]} />
+          <meshBasicMaterial ref={youRingMat} color="#4afcff" transparent opacity={0.65} depthWrite={false} blending={THREE.AdditiveBlending} />
+        </mesh>
+      )}
+      {/* PLAYER-ONLY: floating downward arrow above the head */}
+      {fighter.isPlayer && (
+        <group ref={youArrowRef} position={[0, 2.05, 0]}>
+          <mesh rotation={[Math.PI, 0, 0]}>
+            <coneGeometry args={[0.18, 0.36, 4]} />
+            <meshStandardMaterial color="#4afcff" emissive="#4afcff" emissiveIntensity={2.2} />
+          </mesh>
+        </group>
+      )}
+      {/* PLAYER-ONLY: aim arrow on the floor in front, only during charge.
+          Pre-rotated so its long axis is local +Z (the rotation.y of the
+          parent group puts it in the dash direction). */}
+      {fighter.isPlayer && (
+        <group ref={aimArrowRef} visible={false}>
+          <mesh position={[0, 0.06, 1.2]} rotation={[-Math.PI / 2, 0, 0]}>
+            <planeGeometry args={[0.45, 2.0]} />
+            <meshBasicMaterial ref={aimArrowMat} color="#4afcff" transparent opacity={0.85} depthWrite={false} blending={THREE.AdditiveBlending} side={THREE.DoubleSide} />
+          </mesh>
+          {/* Arrowhead */}
+          <mesh position={[0, 0.07, 2.20]} rotation={[-Math.PI / 2, 0, 0]}>
+            <coneGeometry args={[0.35, 0.55, 3]} />
+            <meshBasicMaterial color="#ffffff" transparent opacity={0.9} depthWrite={false} blending={THREE.AdditiveBlending} />
+          </mesh>
+        </group>
+      )}
       {/* Charge ring — only shown while charging */}
       <mesh ref={chargeRingRef} position={[0, 0.04, 0]} rotation={[-Math.PI / 2, 0, 0]} visible={false}>
         <ringGeometry args={[FIGHTER_RADIUS * 1.05, FIGHTER_RADIUS * 1.40, 36]} />
@@ -342,7 +427,7 @@ export function Scene(props: SceneProps) {
   });
   return (
     <>
-      <ArenaCamera />
+      <ArenaCamera state={state} />
       {/* Warm lava-pit ambient bleeds up from below; cool industrial sky
           fills the steel deck from above for a strong hot/cool contrast. */}
       <fog attach="fog" args={['#1c0a08', 32, 86]} />
