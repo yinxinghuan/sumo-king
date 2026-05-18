@@ -183,7 +183,10 @@ function releaseDash(f: Fighter, ux: number, uz: number) {
   f.dashT = 0;
   f.state = 'dashing';
   f.chargeT = 0;
-  const peak = DASH_PEAK_SPEED * (0.45 + charge * 0.55);
+  // Wider variation than before — 0.25-1.0× peak speed. Combined with the
+  // duration scaling below, distance traveled ranges ~12× between a tap
+  // release and a full hold.
+  const peak = DASH_PEAK_SPEED * (0.25 + charge * 0.75);
   f.vel.x = ux * peak;
   f.vel.z = uz * peak;
 }
@@ -345,13 +348,17 @@ export function useGameLoop(p: GameLoopParams) {
     }
 
     // ---- DASH / SLIDE PHASE PROGRESSION ----
+    // Dash peak duration scales with charge — short tap = quick poke,
+    // full charge = long committed dash. Distance traveled multiplies
+    // by ~12× between min and max charge.
     for (const f of d.fighters) {
       if (f.state !== 'dashing' && f.state !== 'slide') continue;
       f.dashT += c;
-      if (f.state === 'dashing' && f.dashT >= DASH_PEAK_DURATION) {
+      const myPeakDur = DASH_PEAK_DURATION * (0.5 + f.dashCharge * 1.5); // 0.15s..0.60s
+      if (f.state === 'dashing' && f.dashT >= myPeakDur) {
         f.state = 'slide';
       }
-      if (f.state === 'slide' && f.dashT >= DASH_PEAK_DURATION + DASH_SLIDE_DURATION) {
+      if (f.state === 'slide' && f.dashT >= myPeakDur + DASH_SLIDE_DURATION) {
         f.state = 'idle';
         f.dashT = 0;
       }

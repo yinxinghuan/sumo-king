@@ -187,6 +187,8 @@ function MechaFighter({ fighter }: { fighter: Fighter }) {
   const youArrowRef = useRef<THREE.Group>(null);
   const aimArrowRef = useRef<THREE.Group>(null);
   const aimArrowMat = useRef<THREE.MeshBasicMaterial>(null);
+  const aimShaftRef = useRef<THREE.Mesh>(null);
+  const aimHeadRef = useRef<THREE.Mesh>(null);
   useFrame(({ clock }) => {
     if (!groupRef.current) return;
     if (fighter.state === 'down') {
@@ -251,18 +253,28 @@ function MechaFighter({ fighter }: { fighter: Fighter }) {
       }
       // Aim arrow — appears in front of the player only while charging,
       // length scales with charge, color matches charge progression.
-      if (aimArrowRef.current && aimArrowMat.current) {
+      if (aimArrowRef.current && aimArrowMat.current && aimShaftRef.current && aimHeadRef.current) {
         const charging = fighter.state === 'charging';
         aimArrowRef.current.visible = charging;
         if (charging) {
           const f = Math.min(1, fighter.chargeT / CHARGE_TIME_TO_FULL);
-          // Arrow extends from radius 1.2 out to 1.2 + 2.5*charge
-          aimArrowRef.current.scale.set(1, 1, 0.5 + f * 2.0);
+          // Near end fixed past the body (z=2.0 in local). Arrow grows
+          // outward from there based on charge: 1.0u (no charge) to 6.0u
+          // (full). Arrowhead sits at the far end.
+          const NEAR_Z = 2.0;
+          const length = 1.0 + f * 5.0;
+          // Shaft is a unit plane scaled by length, centered at NEAR_Z + length/2
+          aimShaftRef.current.scale.set(1.0 + f * 0.5, 1, length);
+          aimShaftRef.current.position.z = NEAR_Z + length / 2;
+          // Arrowhead sits at far end
+          aimHeadRef.current.scale.setScalar(0.85 + f * 0.5);
+          aimHeadRef.current.position.z = NEAR_Z + length + 0.20;
+          // Color: cyan → magenta → plasma red
           const r = Math.floor(60 + f * 195);
           const g = Math.floor(220 - f * 200);
           const b = Math.floor(255 - f * 175);
           aimArrowMat.current.color.setRGB(r / 255, g / 255, b / 255);
-          aimArrowMat.current.opacity = 0.75 + f * 0.20;
+          aimArrowMat.current.opacity = 0.85 + f * 0.13;
         }
       }
     }
@@ -298,19 +310,21 @@ function MechaFighter({ fighter }: { fighter: Fighter }) {
           </mesh>
         </group>
       )}
-      {/* PLAYER-ONLY: aim arrow on the floor in front, only during charge.
-          Pre-rotated so its long axis is local +Z (the rotation.y of the
-          parent group puts it in the dash direction). */}
+      {/* PLAYER-ONLY: aim arrow on the floor. Near end is fixed past the
+          body; the far end stretches with charge level. Shaft + head are
+          re-positioned each frame via refs (group scale would also move
+          the near end). */}
       {fighter.isPlayer && (
         <group ref={aimArrowRef} visible={false}>
-          <mesh position={[0, 0.06, 1.2]} rotation={[-Math.PI / 2, 0, 0]}>
-            <planeGeometry args={[0.45, 2.0]} />
-            <meshBasicMaterial ref={aimArrowMat} color="#4afcff" transparent opacity={0.85} depthWrite={false} blending={THREE.AdditiveBlending} side={THREE.DoubleSide} />
+          {/* Shaft — unit plane along z, scaled per-frame */}
+          <mesh ref={aimShaftRef} position={[0, 0.10, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+            <planeGeometry args={[1.2, 1.0]} />
+            <meshBasicMaterial ref={aimArrowMat} color="#4afcff" transparent opacity={0.92} depthWrite={false} blending={THREE.AdditiveBlending} side={THREE.DoubleSide} />
           </mesh>
-          {/* Arrowhead */}
-          <mesh position={[0, 0.07, 2.20]} rotation={[-Math.PI / 2, 0, 0]}>
-            <coneGeometry args={[0.35, 0.55, 3]} />
-            <meshBasicMaterial color="#ffffff" transparent opacity={0.9} depthWrite={false} blending={THREE.AdditiveBlending} />
+          {/* Arrowhead — re-positioned at far end of shaft each frame */}
+          <mesh ref={aimHeadRef} position={[0, 0.12, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+            <coneGeometry args={[1.0, 1.4, 3]} />
+            <meshBasicMaterial color="#ffffff" transparent opacity={0.95} depthWrite={false} blending={THREE.AdditiveBlending} />
           </mesh>
         </group>
       )}
