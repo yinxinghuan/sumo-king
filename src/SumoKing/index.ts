@@ -1,0 +1,1 @@
+export { SumoKing } from './SumoKing';

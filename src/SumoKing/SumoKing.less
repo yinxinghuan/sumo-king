@@ -1,0 +1,252 @@
+.sk {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  background: radial-gradient(120% 60% at 50% 100%, #1c3658 0%, #0a1a36 50%, #060d20 100%);
+  overflow: hidden;
+  color: #f4f4f4;
+  font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  touch-action: none;
+
+  &__canvas { position: absolute; inset: 0; }
+
+  &__hud {
+    position: absolute;
+    top: env(safe-area-inset-top, 8px);
+    left: 0;
+    right: 0;
+    padding: 8px 16px;
+    z-index: 10;
+    pointer-events: none;
+    font-family: 'Space Grotesk', 'Inter', system-ui, sans-serif;
+    text-align: center;
+  }
+  &__topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 18px 9px;
+    background: linear-gradient(135deg, rgba(20,28,48,.55), rgba(8,14,32,.55));
+    backdrop-filter: blur(14px) saturate(140%);
+    -webkit-backdrop-filter: blur(14px) saturate(140%);
+    border: 1px solid rgba(255,255,255,.08);
+    box-shadow: 0 8px 28px rgba(0,0,0,.5), inset 0 1px 0 rgba(255,255,255,.06);
+    border-radius: 18px;
+    pointer-events: auto;
+  }
+  &__topbar-cell {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+    &--right { align-items: flex-end; }
+  }
+  &__topbar-mid {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+  }
+  &__topbar-num {
+    font-family: 'Baloo 2', sans-serif;
+    font-size: 28px;
+    font-weight: 800;
+    line-height: 1;
+    color: #fff5dd;
+    text-shadow: 0 0 14px rgba(255,180,80,.25);
+    &--small { font-size: 18px; }
+    &--urgent {
+      color: #ff7a55;
+      text-shadow: 0 0 14px rgba(255, 120, 80, .45);
+      animation: sk-urgent-pulse 0.9s ease-in-out infinite alternate;
+    }
+  }
+  &__topbar-caption {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    color: rgba(220, 200, 170, .55);
+    font-weight: 500;
+    letter-spacing: .22em;
+    text-transform: uppercase;
+    line-height: 1;
+  }
+  &__watermark {
+    position: absolute;
+    left: 16px;
+    bottom: calc(env(safe-area-inset-bottom, 16px) + 16px);
+    height: 28px;
+    width: auto;
+    opacity: .65;
+    pointer-events: auto;
+    filter: drop-shadow(0 4px 12px rgba(0,0,0,.45));
+    z-index: 5;
+  }
+
+  // KO banner — center screen flash when the player downs an opponent.
+  &__ko-banner {
+    position: absolute;
+    top: 38%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    pointer-events: none;
+    z-index: 14;
+    animation: sk-ko-burst 1.2s cubic-bezier(.22,.61,.36,1) forwards;
+  }
+  &__ko-banner-text {
+    font-family: 'Bebas Neue', 'Inter', sans-serif;
+    font-size: clamp(80px, 18vw, 140px);
+    font-weight: 800;
+    letter-spacing: .08em;
+    line-height: 1;
+    background: linear-gradient(180deg, #ffe17a 0%, #ff9844 60%, #ff5b3a 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    filter: drop-shadow(0 6px 22px rgba(255, 150, 60, .65));
+    text-shadow: 0 4px 0 rgba(0, 0, 0, .35);
+  }
+  &__ko-banner-sub {
+    font-family: 'Baloo 2', sans-serif;
+    font-size: 32px;
+    font-weight: 800;
+    color: #ffd64a;
+    margin-top: -8px;
+    text-shadow: 0 4px 18px rgba(255, 180, 60, .55);
+  }
+
+  &__joystick {
+    position: absolute;
+    pointer-events: none;
+    z-index: 5;
+    transform: translate(-50%, -50%);
+    &__ring {
+      width: 120px;
+      height: 120px;
+      border-radius: 50%;
+      border: 4px solid rgba(255,255,255,.55);
+      background: rgba(0,0,0,.18);
+      backdrop-filter: blur(3px);
+      position: relative;
+    }
+    &__stick {
+      position: absolute;
+      width: 56px;
+      height: 56px;
+      border-radius: 50%;
+      background: rgba(255,255,255,.75);
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      transition: transform 60ms linear;
+      box-shadow: 0 4px 12px rgba(0,0,0,.3);
+    }
+  }
+
+  &__gameover {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 32px;
+    z-index: 20;
+    background: radial-gradient(80% 80% at 50% 30%, rgba(20, 40, 80, .55) 0%, rgba(4,10,22,.92) 80%);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    font-family: 'Space Grotesk', 'Inter', system-ui, sans-serif;
+    text-align: center;
+
+    &--win {
+      background: radial-gradient(80% 80% at 50% 30%, rgba(255, 180, 80, .35) 0%, rgba(20, 12, 8, .94) 80%);
+    }
+  }
+  &__gameover-eyebrow {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    color: rgba(255, 130, 130, .85);
+    font-weight: 700;
+    letter-spacing: .35em;
+    text-transform: uppercase;
+    margin-bottom: 18px;
+    &--win {
+      color: #ffd28a;
+      text-shadow: 0 4px 18px rgba(255, 150, 60, .55);
+    }
+  }
+  &__cta {
+    background: linear-gradient(135deg, #ffe17a 0%, #ff9844 60%, #ff5b3a 100%);
+    color: #1a1a1a;
+    border: none;
+    padding: 16px 38px;
+    border-radius: 999px;
+    font-family: 'Space Grotesk', sans-serif;
+    font-weight: 700;
+    font-size: 16px;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    cursor: pointer;
+    box-shadow:
+      0 16px 40px rgba(255, 150, 60, .50),
+      inset 0 1px 0 rgba(255, 255, 255, .6);
+    pointer-events: auto;
+    transition: transform .15s ease;
+    &:active { transform: translateY(2px); }
+  }
+  &__final-score {
+    font-family: 'Baloo 2', sans-serif;
+    font-size: 128px;
+    font-weight: 800;
+    margin: 0;
+    line-height: 1.1;
+    letter-spacing: -.01em;
+    padding: 0 .12em;
+    max-width: 100%;
+    background: linear-gradient(180deg, #ffe17a 0%, #ff9844 70%, #ff5b3a 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    filter: drop-shadow(0 14px 30px rgba(255, 150, 60, .3));
+  }
+  &__final {
+    margin: 14px 0 32px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    font-weight: 500;
+    letter-spacing: .25em;
+    text-transform: uppercase;
+    color: rgba(220, 235, 250, .7);
+  }
+  &__leaderboard-btn {
+    margin-top: 16px;
+    background: rgba(255,255,255,.06);
+    border: 1px solid rgba(255,255,255,.18);
+    color: #fff;
+    padding: 12px 26px;
+    border-radius: 999px;
+    font-family: 'JetBrains Mono', monospace;
+    font-weight: 600;
+    font-size: 12px;
+    letter-spacing: .25em;
+    text-transform: uppercase;
+    cursor: pointer;
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+  }
+}
+
+@keyframes sk-urgent-pulse {
+  0%   { transform: scale(1); }
+  100% { transform: scale(1.08); }
+}
+@keyframes sk-ko-burst {
+  0%   { opacity: 0; transform: translate(-50%, -50%) scale(.4); }
+  18%  { opacity: 1; transform: translate(-50%, -50%) scale(1.18); }
+  35%  { transform: translate(-50%, -50%) scale(1); }
+  85%  { opacity: 1; }
+  100% { opacity: 0; transform: translate(-50%, -50%) scale(.95); }
+}
