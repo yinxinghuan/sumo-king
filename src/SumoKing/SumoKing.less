@@ -118,12 +118,71 @@
     text-shadow: 0 4px 18px rgba(255, 180, 60, .55);
   }
 
+  // Polarity flip button — big bottom-right button
+  &__flip-btn {
+    position: absolute;
+    right: 22px;
+    bottom: calc(env(safe-area-inset-bottom, 16px) + 70px);
+    width: 96px;
+    height: 96px;
+    border-radius: 50%;
+    border: 3px solid;
+    background: rgba(8, 12, 24, .65);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    color: #fff;
+    z-index: 7;
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0;
+    font-family: 'Bebas Neue', 'Inter', sans-serif;
+    letter-spacing: .12em;
+    pointer-events: auto;
+    -webkit-tap-highlight-color: transparent;
+    user-select: none;
+    touch-action: none;
+    transition: transform .12s ease, background .18s ease, border-color .18s ease;
+    &:active { transform: translateY(2px) scale(.95); }
+
+    &--blue {
+      border-color: #36b8ff;
+      color: #b6e6ff;
+      box-shadow:
+        0 0 24px rgba(54, 184, 255, .55),
+        inset 0 0 18px rgba(54, 184, 255, .35);
+    }
+    &--red {
+      border-color: #ff3050;
+      color: #ffc4cc;
+      box-shadow:
+        0 0 24px rgba(255, 48, 80, .55),
+        inset 0 0 18px rgba(255, 48, 80, .35);
+    }
+  }
+  &__flip-btn-label {
+    font-size: 16px;
+    font-weight: 700;
+    line-height: 1;
+    opacity: .8;
+  }
+  &__flip-btn-current {
+    font-size: 38px;
+    font-weight: 800;
+    line-height: 1;
+    margin-top: 2px;
+    text-shadow: 0 0 16px currentColor;
+  }
+
   // Persistent control hint at the bottom of the screen
   &__help {
     position: absolute;
     left: 50%;
-    bottom: calc(env(safe-area-inset-bottom, 16px) + 24px);
+    bottom: calc(env(safe-area-inset-bottom, 16px) + 22px);
     transform: translateX(-50%);
+    max-width: calc(100% - 160px);
     display: inline-flex;
     align-items: center;
     gap: 8px;

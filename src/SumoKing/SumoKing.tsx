@@ -3,8 +3,9 @@ import { Canvas } from '@react-three/fiber';
 import { Leaderboard, useGameScore } from '@shared/leaderboard';
 import { Scene } from './components/Scene';
 import { SplashScene } from './components/SplashScene';
-import { createGameState } from './hooks/useGameLoop';
+import { createGameState, flipPlayerPolarity } from './hooks/useGameLoop';
 import type { SfxKey } from './hooks/useGameLoop';
+import type { Polarity } from './constants';
 import { useJoystick } from './hooks/useJoystick';
 import { playSfx, startBgm, stopBgm, unlockAudio } from './utils/audio';
 import { t } from './i18n';
@@ -29,6 +30,9 @@ export function SumoKing() {
   // KO banner that fires every time the player downs an opponent.
   const [koBanner, setKoBanner] = useState<{ key: number } | null>(null);
   const lastKos = useRef(0);
+  // Player polarity (mirrors state.fighters[0].polarity; updated when
+  // the player taps the flip button).
+  const [polarity, setPolarity] = useState<Polarity>('blue');
 
   const stateRef = useRef(createGameState());
   const { stickRef, view } = useJoystick(phase === 'playing');
@@ -73,9 +77,25 @@ export function SumoKing() {
     setKos(0);
     lastKos.current = 0;
     setKoBanner(null);
+    setPolarity(stateRef.current.fighters[0].polarity);
     setPhase('playing');
     unlockAudio().then(() => startBgm(0.08)).catch(() => { /* silent */ });
   }, []);
+
+  // Flip player polarity. Wired to the on-screen button.
+  const onFlip = useCallback((e?: React.PointerEvent) => {
+    if (e) {
+      e.stopPropagation();
+      e.preventDefault();
+    }
+    if (phase !== 'playing') return;
+    const newP = flipPlayerPolarity(stateRef.current);
+    if (newP) {
+      setPolarity(newP);
+      playSfx('polarity_flip');
+      haptic('light');
+    }
+  }, [phase, haptic]);
 
   useEffect(() => () => { stopBgm(); }, []);
 
@@ -124,14 +144,28 @@ export function SumoKing() {
       )}
       {showCanvas && <img className="sk__watermark" src={alteruSvg} alt="AlterU" />}
 
-      {/* Persistent control hint — always visible during play. Players who
-          don't read the splash card learn the verb here. Auto-dims after
-          the first dash so it doesn't fight the action. */}
+      {/* Persistent control hint */}
       {phase === 'playing' && (
         <div className="sk__help">
           <span className="sk__help-icon" />
-          <span><b>HOLD + DRAG</b>&nbsp;TO CHARGE&nbsp;&nbsp;·&nbsp;&nbsp;<b>RELEASE</b>&nbsp;TO DASH</span>
+          <span><b>DRAG</b>&nbsp;CHARGE&nbsp;·&nbsp;<b>RELEASE</b>&nbsp;DASH&nbsp;·&nbsp;<b>FLIP</b>&nbsp;TO STICK/REPEL</span>
         </div>
+      )}
+
+      {/* Polarity flip button — bottom-right, BIG. Tap to flip player's
+          magnetic polarity. Same color as opponent = REPEL on collision;
+          opposite = STICK and drag them off the edge. */}
+      {phase === 'playing' && (
+        <button
+          className={`sk__flip-btn sk__flip-btn--${polarity}`}
+          onPointerDown={onFlip}
+          data-no-stick
+        >
+          <span className="sk__flip-btn-label">FLIP</span>
+          <span className="sk__flip-btn-current">
+            {polarity === 'red' ? 'R' : 'B'}
+          </span>
+        </button>
       )}
 
       {/* KO banner — flashes when the player downs an opponent */}

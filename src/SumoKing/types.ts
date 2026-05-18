@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import type { AiKind } from './constants';
+import type { AiKind, Polarity } from './constants';
 
 export type Phase = 'splash' | 'playing' | 'gameover';
 
@@ -14,6 +14,7 @@ export type FighterState =
   | 'charging'    // building up dash power
   | 'dashing'     // committed dash burst (cannot turn or re-charge)
   | 'slide'       // sliding-decay phase after the dash burst
+  | 'locked'      // magnetically locked to another fighter (opposite polarity)
   | 'falling'     // off the arena floor — visual drop, then despawn
   | 'down';       // KO'd, not rendered anymore
 
@@ -22,19 +23,24 @@ export interface Fighter {
   isPlayer: boolean;
   aiKind?: AiKind;
   paletteIdx: number;       // index into FIGHTER_COLORS
+  polarity: Polarity;       // red or blue — drives collision behavior
   pos: THREE.Vector3;
   vel: THREE.Vector3;
   rot: number;              // facing angle (radians)
   state: FighterState;
-  chargeT: number;          // 0..CHARGE_TIME_TO_FULL while charging
-  dashT: number;            // 0..(DASH_PEAK + DASH_SLIDE) during dash/slide
-  dashDirX: number;         // unit vec of committed dash direction
+  chargeT: number;
+  dashT: number;
+  dashDirX: number;
   dashDirZ: number;
-  dashCharge: number;       // 0..1 — how full the dash was at release
-  fallT: number;            // time since falling started — drives drop anim
-  // AI scratch state
-  aiNextDecisionT: number;  // game time when to re-evaluate target/action
+  dashCharge: number;
+  fallT: number;
+  // Polarity lock
+  lockedToId: number | null; // id of the partner fighter when state='locked'
+  lockT: number;             // remaining lock time
+  // AI scratch
+  aiNextDecisionT: number;
   aiTargetId: number | null;
+  aiPolarityReviewT: number;
 }
 
 export interface FxEvent {

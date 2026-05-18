@@ -7,10 +7,13 @@ import {
   ROUND_TIME, PLAYER_COUNT_AI, SCORE_KO, SCORE_PER_SECOND_SURVIVED,
   AI_REACT_INTERVAL_MIN, AI_REACT_INTERVAL_MAX,
   AI_LINEUP, GRACE_PERIOD,
+  POLARITY_LOCK_DURATION, POLARITY_RELEASE_KICK,
+  AI_POLARITY_REVIEW_MIN, AI_POLARITY_REVIEW_MAX, LOCK_FRICTION_PER_SEC,
 } from '../constants';
+import type { Polarity } from '../constants';
 import type { Fighter, FxEvent, Stick } from '../types';
 
-export type SfxKey = 'charge_start' | 'dash' | 'collide' | 'ko' | 'fall' | 'game_over' | 'victory';
+export type SfxKey = 'charge_start' | 'dash' | 'collide' | 'ko' | 'fall' | 'game_over' | 'victory' | 'polarity_flip' | 'magnet_lock' | 'magnet_release';
 
 export interface GameRef {
   fighters: Fighter[];
@@ -43,6 +46,45 @@ function alive(f: Fighter) {
   return f.state !== 'down' && f.state !== 'falling';
 }
 
+// Player input — flips the player's polarity. Wired from the UI.
+export function flipPlayerPolarity(d: GameRef): Polarity | null {
+  const player = d.fighters.find(f => f.isPlayer);
+  if (!player || !alive(player)) return null;
+  player.polarity = player.polarity === 'red' ? 'blue' : 'red';
+  // If we were locked to someone, check whether the new polarity now
+  // matches — if so, release immediately with a kick.
+  if (player.state === 'locked' && player.lockedToId !== null) {
+    const partner = d.fighters.find(f => f.id === player.lockedToId);
+    if (partner && partner.polarity === player.polarity) {
+      releaseLock(player, partner, true);
+    }
+  }
+  return player.polarity;
+}
+
+function releaseLock(a: Fighter, b: Fighter, kick: boolean) {
+  a.lockedToId = null;
+  b.lockedToId = null;
+  a.lockT = 0;
+  b.lockT = 0;
+  a.state = 'slide';
+  b.state = 'slide';
+  a.dashT = DASH_PEAK_DURATION; // start in slide-decay window
+  b.dashT = DASH_PEAK_DURATION;
+  if (kick) {
+    // Push them apart along the line between them
+    const dx = b.pos.x - a.pos.x;
+    const dz = b.pos.z - a.pos.z;
+    const dist = Math.max(0.001, Math.hypot(dx, dz));
+    const nx = dx / dist;
+    const nz = dz / dist;
+    a.vel.x = -nx * POLARITY_RELEASE_KICK;
+    a.vel.z = -nz * POLARITY_RELEASE_KICK;
+    b.vel.x =  nx * POLARITY_RELEASE_KICK;
+    b.vel.z =  nz * POLARITY_RELEASE_KICK;
+  }
+}
+
 function liveFighters(d: GameRef) {
   return d.fighters.filter(alive);
 }
@@ -54,6 +96,7 @@ export function createGameState(): GameRef {
     id: newId(),
     isPlayer: true,
     paletteIdx: 0,
+    polarity: 'blue',
     pos: spawnRingPosition(0, total),
     vel: new THREE.Vector3(),
     rot: Math.PI,
@@ -62,8 +105,11 @@ export function createGameState(): GameRef {
     dashT: 0,
     dashDirX: 0, dashDirZ: 0, dashCharge: 0,
     fallT: 0,
+    lockedToId: null,
+    lockT: 0,
     aiNextDecisionT: 0,
     aiTargetId: null,
+    aiPolarityReviewT: 0,
   });
   for (let i = 0; i < PLAYER_COUNT_AI; i++) {
     const p = spawnRingPosition(i + 1, total);
@@ -72,6 +118,7 @@ export function createGameState(): GameRef {
       isPlayer: false,
       aiKind: AI_LINEUP[i % AI_LINEUP.length],
       paletteIdx: i + 1,
+      polarity: Math.random() < 0.5 ? 'red' : 'blue',
       pos: p,
       vel: new THREE.Vector3(),
       rot: Math.atan2(-p.x, -p.z),
@@ -80,8 +127,11 @@ export function createGameState(): GameRef {
       dashT: 0,
       dashDirX: 0, dashDirZ: 0, dashCharge: 0,
       fallT: 0,
+      lockedToId: null,
+      lockT: 0,
       aiNextDecisionT: GRACE_PERIOD + (AI_REACT_INTERVAL_MIN + Math.random() * (AI_REACT_INTERVAL_MAX - AI_REACT_INTERVAL_MIN)),
       aiTargetId: null,
+      aiPolarityReviewT: GRACE_PERIOD + Math.random() * AI_POLARITY_REVIEW_MAX,
     });
   }
   return {
@@ -135,8 +185,54 @@ function releaseDash(f: Fighter, ux: number, uz: number) {
   f.vel.z = uz * peak;
 }
 
+function aiPolarityThink(d: GameRef, self: Fighter) {
+  if (d.time < self.aiPolarityReviewT) return;
+  self.aiPolarityReviewT = d.time + AI_POLARITY_REVIEW_MIN + Math.random() * (AI_POLARITY_REVIEW_MAX - AI_POLARITY_REVIEW_MIN);
+  if (self.state === 'locked') {
+    // Locked = think about flipping out
+    const partner = d.fighters.find(f => f.id === self.lockedToId);
+    if (!partner) return;
+    const myR = Math.hypot(self.pos.x, self.pos.z);
+    const partnerR = Math.hypot(partner.pos.x, partner.pos.z);
+    // If I'm closer to the edge than my partner, I want to break the
+    // lock — flip to match polarity. Otherwise hold the lock (carry
+    // the partner farther toward the edge).
+    if (myR > partnerR + 0.5) {
+      self.polarity = partner.polarity;
+    }
+    return;
+  }
+  // Normal play: pick polarity based on current target & threats.
+  // Heuristic — if any visible threat is dashing toward me, match their
+  // polarity so we shove apart. Otherwise pick opposite for attract.
+  const others = d.fighters.filter(f => f.id !== self.id && alive(f));
+  let threatPolarity: Polarity | null = null;
+  for (const o of others) {
+    if (o.state !== 'dashing' && o.state !== 'charging') continue;
+    const dx = self.pos.x - o.pos.x;
+    const dz = self.pos.z - o.pos.z;
+    if (Math.hypot(dx, dz) < 8) {
+      threatPolarity = o.polarity;
+      break;
+    }
+  }
+  if (threatPolarity) {
+    self.polarity = threatPolarity;
+    return;
+  }
+  // No threat — try to set OPPOSITE to current target for offense
+  const target = self.aiTargetId !== null
+    ? d.fighters.find(f => f.id === self.aiTargetId && alive(f))
+    : null;
+  if (target) {
+    const desired: Polarity = target.polarity === 'red' ? 'blue' : 'red';
+    // Don't always flip — adds some unpredictability for the player
+    if (Math.random() < 0.65) self.polarity = desired;
+  }
+}
+
 function aiThink(d: GameRef, self: Fighter) {
-  if (self.state === 'dashing' || self.state === 'slide') return;
+  if (self.state === 'dashing' || self.state === 'slide' || self.state === 'locked') return;
   if (d.time < self.aiNextDecisionT) return;
 
   const target = chooseAiTarget(d, self);
@@ -211,7 +307,7 @@ export function useGameLoop(p: GameLoopParams) {
 
     const player = d.fighters.find(f => f.isPlayer);
 
-    // ---- INPUT (player) — only when idle/charging ----
+    // ---- INPUT (player) — only when idle/charging (locked blocks charge) ----
     if (player && alive(player) && (player.state === 'idle' || player.state === 'charging')) {
       const mag = Math.hypot(p.stick.x, p.stick.y);
       const active = p.stick.active && mag > 0.08;
@@ -241,6 +337,7 @@ export function useGameLoop(p: GameLoopParams) {
     // ---- AI ----
     for (const f of d.fighters) {
       if (f.isPlayer || !alive(f)) continue;
+      aiPolarityThink(d, f);
       aiThink(d, f);
     }
 
@@ -281,11 +378,18 @@ export function useGameLoop(p: GameLoopParams) {
     }
 
     // ---- FIGHTER-FIGHTER COLLISION ----
+    // Two branches now:
+    //   SAME polarity → strong repel (the original sumo shove behavior)
+    //   OPPOSITE polarity → magnetic lock — they stick, share velocity,
+    //   and the attacker can drag the defender off the edge.
     const live = liveFighters(d);
     for (let i = 0; i < live.length; i++) {
       for (let j = i + 1; j < live.length; j++) {
         const a = live[i];
         const b = live[j];
+        // Skip pairs that are already locked together — handled in the
+        // locked-pair update below.
+        if (a.lockedToId === b.id || b.lockedToId === a.id) continue;
         const dx = b.pos.x - a.pos.x;
         const dz = b.pos.z - a.pos.z;
         const dist = Math.hypot(dx, dz);
@@ -301,18 +405,94 @@ export function useGameLoop(p: GameLoopParams) {
         const va_n = a.vel.x * nx + a.vel.z * nz;
         const vb_n = b.vel.x * nx + b.vel.z * nz;
         const rel = va_n - vb_n;
-        if (rel <= 0) continue;
-        a.vel.x += (-rel * (1 - COLLIDE_BOUNCE)) * nx;
-        a.vel.z += (-rel * (1 - COLLIDE_BOUNCE)) * nz;
-        b.vel.x += (rel * COLLIDE_TRANSFER) * nx;
-        b.vel.z += (rel * COLLIDE_TRANSFER) * nz;
-        const wasHeavy = a.state === 'dashing' || b.state === 'dashing';
+        if (rel <= 0) continue; // approaching — proceed
+        const oppositePoles = a.polarity !== b.polarity;
         emitFx(d, 'collide', (a.pos.x + b.pos.x) * 0.5, (a.pos.z + b.pos.z) * 0.5);
-        p.playSfx('collide');
-        if (wasHeavy) p.haptic?.('heavy'); else p.haptic?.('light');
-        if (a.state === 'dashing') { a.state = 'slide'; a.dashT = DASH_PEAK_DURATION; }
-        if (b.state === 'dashing') { b.state = 'slide'; b.dashT = DASH_PEAK_DURATION; }
+        if (oppositePoles) {
+          // STICK — combine velocities, both enter 'locked' state.
+          const sharedVx = (a.vel.x + b.vel.x) * 0.5;
+          const sharedVz = (a.vel.z + b.vel.z) * 0.5;
+          a.vel.x = sharedVx;
+          a.vel.z = sharedVz;
+          b.vel.x = sharedVx;
+          b.vel.z = sharedVz;
+          a.state = 'locked';
+          b.state = 'locked';
+          a.lockedToId = b.id;
+          b.lockedToId = a.id;
+          a.lockT = POLARITY_LOCK_DURATION;
+          b.lockT = POLARITY_LOCK_DURATION;
+          a.chargeT = 0;
+          b.chargeT = 0;
+          p.playSfx('magnet_lock');
+          p.haptic?.('heavy');
+        } else {
+          // REPEL — current shove physics
+          a.vel.x += (-rel * (1 - COLLIDE_BOUNCE)) * nx;
+          a.vel.z += (-rel * (1 - COLLIDE_BOUNCE)) * nz;
+          b.vel.x += (rel * COLLIDE_TRANSFER) * nx;
+          b.vel.z += (rel * COLLIDE_TRANSFER) * nz;
+          const wasHeavy = a.state === 'dashing' || b.state === 'dashing';
+          p.playSfx('collide');
+          if (wasHeavy) p.haptic?.('heavy'); else p.haptic?.('light');
+          if (a.state === 'dashing') { a.state = 'slide'; a.dashT = DASH_PEAK_DURATION; }
+          if (b.state === 'dashing') { b.state = 'slide'; b.dashT = DASH_PEAK_DURATION; }
+        }
       }
+    }
+
+    // ---- LOCKED PAIR UPDATE ----
+    // Keep partners stuck at exactly 2*FIGHTER_RADIUS, share velocity, tick
+    // down the lock timer. Either side flipping to match polarity will
+    // break the lock instantly (handled in flipPlayerPolarity for the
+    // player; the AI may flip during the polarity review pass).
+    const handledLocks = new Set<number>();
+    for (const a of d.fighters) {
+      if (a.state !== 'locked' || a.lockedToId === null) continue;
+      if (handledLocks.has(a.id)) continue;
+      const b = d.fighters.find(f => f.id === a.lockedToId);
+      if (!b || b.state !== 'locked') {
+        // Partner gone — release a
+        a.state = 'idle';
+        a.lockedToId = null;
+        a.lockT = 0;
+        continue;
+      }
+      handledLocks.add(a.id);
+      handledLocks.add(b.id);
+      // Tick lock timer
+      a.lockT -= c;
+      b.lockT -= c;
+      if (a.polarity === b.polarity) {
+        releaseLock(a, b, true);
+        p.playSfx('magnet_release');
+        continue;
+      }
+      if (a.lockT <= 0) {
+        releaseLock(a, b, true);
+        p.playSfx('magnet_release');
+        continue;
+      }
+      // Snap relative position to exactly 2R apart, midpoint preserved
+      const midX = (a.pos.x + b.pos.x) * 0.5;
+      const midZ = (a.pos.z + b.pos.z) * 0.5;
+      const dx = b.pos.x - a.pos.x;
+      const dz = b.pos.z - a.pos.z;
+      const dist = Math.max(0.001, Math.hypot(dx, dz));
+      const nx = dx / dist;
+      const nz = dz / dist;
+      a.pos.x = midX - nx * FIGHTER_RADIUS;
+      a.pos.z = midZ - nz * FIGHTER_RADIUS;
+      b.pos.x = midX + nx * FIGHTER_RADIUS;
+      b.pos.z = midZ + nz * FIGHTER_RADIUS;
+      // Share the velocity (gentle decay)
+      const sharedVx = (a.vel.x + b.vel.x) * 0.5;
+      const sharedVz = (a.vel.z + b.vel.z) * 0.5;
+      const k = Math.exp(-LOCK_FRICTION_PER_SEC * c);
+      a.vel.x = sharedVx * k;
+      a.vel.z = sharedVz * k;
+      b.vel.x = sharedVx * k;
+      b.vel.z = sharedVz * k;
     }
 
     // ---- FALL-OFF DETECTION ----

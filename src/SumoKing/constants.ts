@@ -8,7 +8,12 @@ export const DANGER_RADIUS = 14;           // visible warning band (14..15)
 export const FALL_RADIUS  = 16.0;          // dist past this = you're falling
 
 // Fighter footprint + base move
-export const FIGHTER_RADIUS = 0.95;        // collision radius
+// Bumped up — at the previous 0.95 footprint on a 30u arena the mechas
+// read tiny on a phone screen. 1.30 makes them clearly visible while
+// still leaving room to maneuver.
+export const FIGHTER_RADIUS = 1.30;        // collision radius
+// Visual scale multiplier on top of the geometry — used in JSX
+export const FIGHTER_VISUAL_SCALE = 1.60;
 export const BASE_SPEED = 6.0;             // free movement speed when not charging/dashing
 export const CHARGE_TIME_TO_FULL = 0.55;   // seconds of holding stick to max charge
 export const DASH_PEAK_SPEED = 22;         // velocity at full charge
@@ -54,3 +59,29 @@ export const FIGHTER_COLORS = [
 
 export type AiKind = 'rookie' | 'bruiser' | 'sniper';
 export const AI_LINEUP: AiKind[] = ['rookie', 'bruiser', 'sniper'];
+
+// ===== POLARITY =====
+// The point of differentiation from the older penguin-sumo: every mecha
+// has a magnetic polarity that the player can flip. Same poles repel
+// (current shove behavior); opposite poles ATTRACT — they stick together
+// and combine momentum, letting an attacker drag a defender off the edge.
+// Player must read the situation and flip accordingly.
+
+export type Polarity = 'red' | 'blue';
+export const POLARITY_RED  = '#ff3050';
+export const POLARITY_BLUE = '#36b8ff';
+
+// How long opposite-polarity collision keeps two fighters magnetically
+// locked together (seconds). They share velocity during this window;
+// either side can break free early by flipping to match polarity.
+export const POLARITY_LOCK_DURATION = 0.9;
+// Repulsion impulse applied when a lock breaks (either by timeout OR by
+// a same-polarity match after flip)
+export const POLARITY_RELEASE_KICK = 6.0;
+// AI polarity-flip cadence — checked every interval, chance to flip is
+// situational (e.g. flip to escape a lock).
+export const AI_POLARITY_REVIEW_MIN = 0.8;
+export const AI_POLARITY_REVIEW_MAX = 2.2;
+// During a lock, the combined-velocity friction is lower so dashes
+// actually carry both fighters somewhere.
+export const LOCK_FRICTION_PER_SEC = 0.9;

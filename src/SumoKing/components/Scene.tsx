@@ -5,7 +5,8 @@ import { RoundedBox } from '@react-three/drei';
 import {
   CAMERA_FOV, CAMERA_POS, CAMERA_FOLLOW, CAMERA_LERP,
   ARENA_RADIUS, DANGER_RADIUS,
-  FIGHTER_COLORS, FIGHTER_RADIUS, CHARGE_TIME_TO_FULL,
+  FIGHTER_COLORS, FIGHTER_RADIUS, FIGHTER_VISUAL_SCALE, CHARGE_TIME_TO_FULL,
+  POLARITY_RED, POLARITY_BLUE,
 } from '../constants';
 import { useGameLoop, GameRef, SfxKey } from '../hooks/useGameLoop';
 import type { Fighter, Stick } from '../types';
@@ -80,16 +81,15 @@ function Arena() {
         <circleGeometry args={[ARENA_RADIUS + 0.4, 64]} />
         <meshStandardMaterial color="#1a0a08" roughness={1} />
       </mesh>
-      {/* Platform top — brushed steel */}
+      {/* Platform top — DARK navy/charcoal so mechas have strong contrast */}
       <mesh position={[0, 0, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
         <circleGeometry args={[ARENA_RADIUS, 64]} />
-        <meshStandardMaterial color="#3a4250" roughness={0.55} metalness={0.55} />
+        <meshStandardMaterial color="#0e1626" roughness={0.55} metalness={0.40} />
       </mesh>
-      {/* Inner platform pattern — center disc lifted slightly with a darker
-          grate finish for visual interest. */}
+      {/* Inner platform pattern */}
       <mesh position={[0, 0.005, 0]} rotation={[-Math.PI / 2, 0, 0]}>
         <circleGeometry args={[ARENA_RADIUS * 0.55, 48]} />
-        <meshStandardMaterial color="#2c3440" roughness={0.5} metalness={0.65} />
+        <meshStandardMaterial color="#070d18" roughness={0.5} metalness={0.50} />
       </mesh>
       {/* Cross-shape decals on the deck for orientation */}
       {[0, Math.PI / 2].map((rot, i) => (
@@ -115,6 +115,32 @@ function Arena() {
         <meshBasicMaterial color="#ff8838" transparent opacity={0.45} depthWrite={false} blending={THREE.AdditiveBlending} />
       </mesh>
     </group>
+  );
+}
+
+// Bright polarity-colored halo under every fighter. Visually it's the
+// fighter's "magnet aura" — red for red-pole, blue for blue. Pulses
+// faster while locked (showing instability). When locked between two
+// opposite-polarity fighters, the halos visibly intersect = clear
+// gameplay tell.
+function PolarityHalo({ fighter }: { fighter: Fighter }) {
+  const matRef = useRef<THREE.MeshBasicMaterial>(null);
+  const meshRef = useRef<THREE.Mesh>(null);
+  useFrame(({ clock }) => {
+    if (!matRef.current || !meshRef.current) return;
+    const t = clock.getElapsedTime();
+    const isLocked = fighter.state === 'locked';
+    const freq = isLocked ? 6.0 : 2.4;
+    const pulse = 0.7 + Math.sin(t * freq + fighter.id) * (isLocked ? 0.30 : 0.18);
+    matRef.current.color.set(fighter.polarity === 'red' ? POLARITY_RED : POLARITY_BLUE);
+    matRef.current.opacity = 0.55 + pulse * 0.30;
+    meshRef.current.scale.set(pulse, 1, pulse);
+  });
+  return (
+    <mesh ref={meshRef} position={[0, 0.035, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+      <ringGeometry args={[FIGHTER_RADIUS * 1.05, FIGHTER_RADIUS * 1.80, 48]} />
+      <meshBasicMaterial ref={matRef} color={POLARITY_BLUE} transparent opacity={0.75} depthWrite={false} blending={THREE.AdditiveBlending} side={THREE.DoubleSide} />
+    </mesh>
   );
 }
 
@@ -223,6 +249,11 @@ function MechaFighter({ fighter }: { fighter: Fighter }) {
         <circleGeometry args={[FIGHTER_RADIUS * 0.85, 22]} />
         <meshBasicMaterial color="#000" transparent opacity={0.40} />
       </mesh>
+      {/* POLARITY HALO — big bright ring under EVERY fighter, color =
+          their current polarity. Doubles as gameplay info AND as a strong
+          visual outline against the dark floor (fixes the "fighters
+          blend into the floor" issue). */}
+      <PolarityHalo fighter={fighter} />
       {/* PLAYER-ONLY: pulsing cyan "YOU" ring on the floor */}
       {fighter.isPlayer && (
         <mesh ref={youRingRef} position={[0, 0.03, 0]} rotation={[-Math.PI / 2, 0, 0]}>
@@ -260,7 +291,9 @@ function MechaFighter({ fighter }: { fighter: Fighter }) {
         <ringGeometry args={[FIGHTER_RADIUS * 1.05, FIGHTER_RADIUS * 1.40, 36]} />
         <meshBasicMaterial ref={chargeRingMat} color={palette.belt} transparent opacity={0.7} depthWrite={false} blending={THREE.AdditiveBlending} />
       </mesh>
-      <group ref={bounceRef}>
+      {/* All body parts scale up uniformly via FIGHTER_VISUAL_SCALE so the
+          mechas read clearly on a phone without changing collision math. */}
+      <group ref={bounceRef} scale={FIGHTER_VISUAL_SCALE}>
         {/* Lower hull — wider base */}
         <mesh position={[0, 0.32, 0]} castShadow>
           <cylinderGeometry args={[0.48, 0.52, 0.30, 10]} />

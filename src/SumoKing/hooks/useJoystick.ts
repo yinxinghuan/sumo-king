@@ -25,6 +25,10 @@ export function useJoystick(enabled: boolean) {
 
     const onDown = (e: PointerEvent) => {
       if (pointerId.current !== null) return;
+      // Ignore taps that started on a UI element (buttons, etc.) — these
+      // mark themselves via `data-noStick` so they don't double-trigger.
+      const t = e.target as HTMLElement | null;
+      if (t && t.closest('[data-no-stick]')) return;
       pointerId.current = e.pointerId;
       origin.current = { x: e.clientX, y: e.clientY };
       stickRef.current.active = true;

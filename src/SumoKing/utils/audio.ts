@@ -6,7 +6,8 @@
 
 export type SfxKey =
   | 'charge_start' | 'dash' | 'collide' | 'ko' | 'fall'
-  | 'game_over'    | 'victory';
+  | 'game_over'    | 'victory'
+  | 'polarity_flip' | 'magnet_lock' | 'magnet_release';
 
 let ctx: AudioContext | null = null;
 let master: GainNode | null = null;
@@ -121,6 +122,23 @@ export function playSfx(key: SfxKey) {
       tone(660, 'triangle', 0.16, 0.24, t + 0.10,  784);
       tone(784, 'triangle', 0.20, 0.24, t + 0.20,  988);
       tone(988, 'triangle', 0.30, 0.22, t + 0.30, 1175);
+      break;
+    case 'polarity_flip':
+      // Quick electric "swap" — two sharp opposite glides
+      tone(880, 'square', 0.06, 0.18, t,        1400);
+      tone(440, 'square', 0.08, 0.14, t + 0.04, 220);
+      break;
+    case 'magnet_lock':
+      // Drone "lock-on" — sustained dual tone with quick fade
+      tone(180, 'sine',     0.40, 0.22, t,        260);
+      tone(540, 'triangle', 0.40, 0.16, t + 0.02, 720);
+      tone(360, 'sine',     0.30, 0.12, t + 0.08, 480);
+      break;
+    case 'magnet_release':
+      // Sharp pop — two-tone snap
+      tone(660, 'square', 0.06, 0.20, t,         260);
+      tone(220, 'sine',   0.10, 0.20, t + 0.02,  110);
+      noiseBurst(0.10, 0.10, t, 3000, 500);
       break;
   }
 }
