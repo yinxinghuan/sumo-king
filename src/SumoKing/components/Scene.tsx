@@ -91,13 +91,6 @@ function Arena() {
         <circleGeometry args={[ARENA_RADIUS * 0.55, 48]} />
         <meshStandardMaterial color="#070d18" roughness={0.5} metalness={0.50} />
       </mesh>
-      {/* Cross-shape decals on the deck for orientation */}
-      {[0, Math.PI / 2].map((rot, i) => (
-        <mesh key={i} position={[0, 0.012, 0]} rotation={[-Math.PI / 2, 0, rot]}>
-          <planeGeometry args={[ARENA_RADIUS * 0.10, ARENA_RADIUS * 1.8]} />
-          <meshStandardMaterial color="#1f2530" roughness={0.6} metalness={0.4} />
-        </mesh>
-      ))}
       {/* Danger band — magenta neon strip */}
       <mesh position={[0, 0.015, 0]} rotation={[-Math.PI / 2, 0, 0]}>
         <ringGeometry args={[DANGER_RADIUS, ARENA_RADIUS - 0.15, 64]} />
@@ -118,29 +111,61 @@ function Arena() {
   );
 }
 
-// Bright polarity-colored halo under every fighter. Visually it's the
-// fighter's "magnet aura" — red for red-pole, blue for blue. Pulses
-// faster while locked (showing instability). When locked between two
-// opposite-polarity fighters, the halos visibly intersect = clear
-// gameplay tell.
-function PolarityHalo({ fighter }: { fighter: Fighter }) {
+// Gold ground ring — appears ONLY under the player. The gold color is
+// not used anywhere else, so the player instantly knows "the gold ring
+// is me". Pulses to feel alive but stays a stable identity marker.
+function PlayerGroundRing({ fighter }: { fighter: Fighter }) {
   const matRef = useRef<THREE.MeshBasicMaterial>(null);
   const meshRef = useRef<THREE.Mesh>(null);
   useFrame(({ clock }) => {
     if (!matRef.current || !meshRef.current) return;
     const t = clock.getElapsedTime();
-    const isLocked = fighter.state === 'locked';
-    const freq = isLocked ? 6.0 : 2.4;
-    const pulse = 0.7 + Math.sin(t * freq + fighter.id) * (isLocked ? 0.30 : 0.18);
-    matRef.current.color.set(fighter.polarity === 'red' ? POLARITY_RED : POLARITY_BLUE);
-    matRef.current.opacity = 0.55 + pulse * 0.30;
+    const pulse = 0.85 + Math.sin(t * 3.4) * 0.18;
     meshRef.current.scale.set(pulse, 1, pulse);
+    matRef.current.opacity = 0.70 + Math.sin(t * 3.4) * 0.20;
+    // Hint at facing — rotate a bit so the arrow chevron points forward
+    meshRef.current.rotation.z = -fighter.rot;
   });
   return (
-    <mesh ref={meshRef} position={[0, 0.035, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-      <ringGeometry args={[FIGHTER_RADIUS * 1.05, FIGHTER_RADIUS * 1.80, 48]} />
-      <meshBasicMaterial ref={matRef} color={POLARITY_BLUE} transparent opacity={0.75} depthWrite={false} blending={THREE.AdditiveBlending} side={THREE.DoubleSide} />
+    <mesh ref={meshRef} position={[0, 0.04, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+      <ringGeometry args={[FIGHTER_RADIUS * 1.10, FIGHTER_RADIUS * 1.95, 56]} />
+      <meshBasicMaterial ref={matRef} color="#ffd84a" transparent opacity={0.85} depthWrite={false} blending={THREE.AdditiveBlending} side={THREE.DoubleSide} />
     </mesh>
+  );
+}
+
+// Polarity is shown by a glowing red/blue ball floating above the
+// fighter's head — NOT a ground ring. Keeps two visual languages clean:
+//   • Ground ring  = identity ("this is YOU", gold, player only)
+//   • Floating ball = polarity (red or blue, everyone has one)
+function PolarityBall({ fighter }: { fighter: Fighter }) {
+  const matRef = useRef<THREE.MeshStandardMaterial>(null);
+  const meshRef = useRef<THREE.Group>(null);
+  useFrame(({ clock }) => {
+    if (!matRef.current || !meshRef.current) return;
+    const t = clock.getElapsedTime();
+    const isLocked = fighter.state === 'locked';
+    const freq = isLocked ? 6.5 : 2.6;
+    const pulse = 0.85 + Math.sin(t * freq + fighter.id) * (isLocked ? 0.25 : 0.15);
+    const c = fighter.polarity === 'red' ? POLARITY_RED : POLARITY_BLUE;
+    matRef.current.color.set(c);
+    matRef.current.emissive.set(c);
+    meshRef.current.position.y = 5.20 + Math.sin(t * 1.6 + fighter.id) * 0.18;
+    meshRef.current.scale.setScalar(pulse);
+  });
+  return (
+    <group ref={meshRef} position={[0, 5.20, 0]}>
+      {/* Solid colored core — non-additive so red/blue reads true */}
+      <mesh>
+        <sphereGeometry args={[0.70, 20, 16]} />
+        <meshStandardMaterial ref={matRef} color={POLARITY_BLUE} emissive={POLARITY_BLUE} emissiveIntensity={2.6} roughness={0.2} metalness={0.4} />
+      </mesh>
+      {/* Outer glow halo — additive bloom */}
+      <mesh>
+        <sphereGeometry args={[1.10, 20, 14]} />
+        <meshBasicMaterial color={POLARITY_BLUE} transparent opacity={0.25} depthWrite={false} blending={THREE.AdditiveBlending} />
+      </mesh>
+    </group>
   );
 }
 
@@ -249,11 +274,14 @@ function MechaFighter({ fighter }: { fighter: Fighter }) {
         <circleGeometry args={[FIGHTER_RADIUS * 0.85, 22]} />
         <meshBasicMaterial color="#000" transparent opacity={0.40} />
       </mesh>
-      {/* POLARITY HALO — big bright ring under EVERY fighter, color =
-          their current polarity. Doubles as gameplay info AND as a strong
-          visual outline against the dark floor (fixes the "fighters
-          blend into the floor" issue). */}
-      <PolarityHalo fighter={fighter} />
+      {/* PLAYER-ONLY: gold ground ring — this is "YOU". No other fighter
+          gets a ground ring, no other fighter uses gold. Eliminates the
+          previous confusion where everyone had a glowing ring. */}
+      {fighter.isPlayer && (
+        <PlayerGroundRing fighter={fighter} />
+      )}
+      {/* POLARITY BALL — floats above every fighter's head, color = polarity */}
+      <PolarityBall fighter={fighter} />
       {/* PLAYER-ONLY: pulsing cyan "YOU" ring on the floor */}
       {fighter.isPlayer && (
         <mesh ref={youRingRef} position={[0, 0.03, 0]} rotation={[-Math.PI / 2, 0, 0]}>

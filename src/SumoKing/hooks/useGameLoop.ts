@@ -36,7 +36,10 @@ function emitFx(d: GameRef, type: FxEvent['type'], x: number, z: number) {
 }
 
 function spawnRingPosition(idx: number, total: number): THREE.Vector3 {
-  const ringR = 9;
+  // Spawn all four fighters close together (ringR=6) so they're all visible
+  // in the camera's tighter follow frame from the start. AI quickly fan out
+  // once the round begins.
+  const ringR = 6;
   const startAngle = -Math.PI / 2;
   const a = startAngle + (idx / total) * Math.PI * 2;
   return new THREE.Vector3(Math.cos(a) * ringR, 0, Math.sin(a) * ringR);

@@ -13,7 +13,7 @@ export const FALL_RADIUS  = 16.0;          // dist past this = you're falling
 // still leaving room to maneuver.
 export const FIGHTER_RADIUS = 1.30;        // collision radius
 // Visual scale multiplier on top of the geometry — used in JSX
-export const FIGHTER_VISUAL_SCALE = 1.60;
+export const FIGHTER_VISUAL_SCALE = 2.50;
 export const BASE_SPEED = 6.0;             // free movement speed when not charging/dashing
 export const CHARGE_TIME_TO_FULL = 0.55;   // seconds of holding stick to max charge
 export const DASH_PEAK_SPEED = 22;         // velocity at full charge
@@ -35,10 +35,10 @@ export const SCORE_PER_SECOND_SURVIVED = 1;
 export const AI_REACT_INTERVAL_MIN = 0.4;  // re-evaluate target every 0.4..1.0s
 export const AI_REACT_INTERVAL_MAX = 1.0;
 
-// Camera — full follow with a near-overhead angle. The player stays
-// centered so they never run off-screen; the cyan rim of the arena is
-// clearly visible at the screen edge as they near the boundary.
-export const CAMERA_POS: [number, number, number] = [0, 30, 6];
+// Camera — closer to the action so the (now larger) fighters read big
+// on a phone screen. Less overhead tilt means the mecha body is
+// recognizable from the side.
+export const CAMERA_POS: [number, number, number] = [0, 26, 9];
 export const CAMERA_FOV = 65;
 export const CAMERA_FOLLOW = 1.0;
 export const CAMERA_LERP = 0.14;
