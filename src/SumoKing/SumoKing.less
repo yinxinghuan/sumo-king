@@ -118,6 +118,91 @@
     text-shadow: 0 4px 18px rgba(255, 180, 60, .55);
   }
 
+  // In-game gesture tutorial — three animated illustrations fading
+  // in/out near the bottom of the screen. Pointer-events:none so they
+  // never block touches.
+  &__tutorial {
+    position: absolute;
+    inset: 0;
+    z-index: 8;
+    pointer-events: none;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-end;
+    padding-bottom: calc(env(safe-area-inset-bottom, 16px) + 180px);
+    gap: 26px;
+    animation: sk-tutorial-fade 7s ease-in forwards;
+  }
+  &__tutorial-step {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    padding: 8px 18px 9px 16px;
+    background: rgba(10, 14, 28, .82);
+    border: 1px solid rgba(74, 252, 255, .35);
+    border-radius: 999px;
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    box-shadow: 0 4px 24px rgba(0,0,0,.45), 0 0 20px rgba(74, 252, 255, .15);
+  }
+  &__tutorial-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    letter-spacing: .18em;
+    text-transform: uppercase;
+    color: rgba(220, 235, 250, .9);
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    b {
+      font-size: 14px;
+      color: #4afcff;
+      font-weight: 800;
+      letter-spacing: .14em;
+    }
+    span {
+      color: rgba(160, 180, 200, .65);
+    }
+  }
+  // Animated finger circle that slides back-and-forth (drag motion)
+  &__tutorial-finger {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: rgba(74, 252, 255, .25);
+    border: 2px solid #4afcff;
+    box-shadow: 0 0 14px rgba(74, 252, 255, .65);
+    animation: sk-tutorial-drag 1.6s ease-in-out infinite;
+  }
+  &__tutorial-trail {
+    position: absolute;
+    left: 8px;
+    width: 56px;
+    height: 4px;
+    border-radius: 2px;
+    background: linear-gradient(90deg, rgba(74, 252, 255, .0), rgba(74, 252, 255, .55), rgba(74, 252, 255, .0));
+    animation: sk-tutorial-trail 1.6s ease-in-out infinite;
+  }
+  // Quick explosion burst (release)
+  &__tutorial-burst {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: radial-gradient(circle, #fff5a0 0%, #ff5b3a 70%, rgba(255,90,60,0) 100%);
+    animation: sk-tutorial-burst 1.0s ease-out infinite;
+  }
+  // Arrow pointing to the FLIP button (lower right)
+  &__tutorial-flip-arrow {
+    width: 36px;
+    height: 28px;
+    background: linear-gradient(135deg, rgba(74, 252, 255, .25), rgba(74, 252, 255, .55));
+    clip-path: polygon(0 40%, 65% 40%, 65% 0, 100% 50%, 65% 100%, 65% 60%, 0 60%);
+    animation: sk-tutorial-arrow 1.2s ease-in-out infinite;
+    border-left: 2px solid transparent;
+  }
+
   // Polarity flip button — big bottom-right button
   &__flip-btn {
     position: absolute;
@@ -340,6 +425,29 @@
 @keyframes sk-urgent-pulse {
   0%   { transform: scale(1); }
   100% { transform: scale(1.08); }
+}
+@keyframes sk-tutorial-fade {
+  0%   { opacity: 0; }
+  8%   { opacity: 1; }
+  85%  { opacity: 1; }
+  100% { opacity: 0; }
+}
+@keyframes sk-tutorial-drag {
+  0%, 100% { transform: translateX(-26px); }
+  50%      { transform: translateX(26px); }
+}
+@keyframes sk-tutorial-trail {
+  0%, 100% { opacity: .3; transform: scaleX(.6); }
+  50%      { opacity: 1;  transform: scaleX(1); }
+}
+@keyframes sk-tutorial-burst {
+  0%   { transform: scale(.4); opacity: 0; }
+  35%  { transform: scale(1.4); opacity: 1; }
+  100% { transform: scale(2.2); opacity: 0; }
+}
+@keyframes sk-tutorial-arrow {
+  0%, 100% { transform: translateX(0); opacity: .7; }
+  50%      { transform: translateX(10px); opacity: 1; }
 }
 @keyframes sk-help-blink {
   0%, 100% { opacity: .55; transform: scale(1); }

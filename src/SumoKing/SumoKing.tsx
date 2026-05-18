@@ -33,6 +33,9 @@ export function SumoKing() {
   // Player polarity (mirrors state.fighters[0].polarity; updated when
   // the player taps the flip button).
   const [polarity, setPolarity] = useState<Polarity>('blue');
+  // First-bout tutorial overlay. Auto-hides after ~7s or on first dash.
+  const [showTutorial, setShowTutorial] = useState(false);
+  const tutorialTimer = useRef<number | null>(null);
 
   const stateRef = useRef(createGameState());
   const { stickRef, view } = useJoystick(phase === 'playing');
@@ -79,8 +82,31 @@ export function SumoKing() {
     setKoBanner(null);
     setPolarity(stateRef.current.fighters[0].polarity);
     setPhase('playing');
+    setShowTutorial(true);
+    if (tutorialTimer.current !== null) window.clearTimeout(tutorialTimer.current);
+    tutorialTimer.current = window.setTimeout(() => setShowTutorial(false), 7000) as unknown as number;
     unlockAudio().then(() => startBgm(0.08)).catch(() => { /* silent */ });
   }, []);
+
+  // Poll for player's first dash — auto-dismiss the tutorial when they
+  // actually pull off the gesture, not just when time runs out.
+  useEffect(() => {
+    if (phase !== 'playing' || !showTutorial) return;
+    const id = window.setInterval(() => {
+      const player = stateRef.current.fighters.find(f => f.isPlayer);
+      // Only dismiss when the player INITIATED a dash (state 'dashing'
+      // only happens via releaseDash). Being pushed into 'slide' by an
+      // AI collision doesn't count — that wasn't their gesture.
+      if (player && player.state === 'dashing' && player.dashCharge > 0.05) {
+        setShowTutorial(false);
+        if (tutorialTimer.current !== null) {
+          window.clearTimeout(tutorialTimer.current);
+          tutorialTimer.current = null;
+        }
+      }
+    }, 150);
+    return () => window.clearInterval(id);
+  }, [phase, showTutorial]);
 
   // Flip player polarity. Wired to the on-screen button.
   const onFlip = useCallback((e?: React.PointerEvent) => {
@@ -166,6 +192,26 @@ export function SumoKing() {
             {polarity === 'red' ? 'R' : 'B'}
           </span>
         </button>
+      )}
+
+      {/* In-game gesture tutorial — shown for ~7s at round start or
+          until the player pulls off their first dash. */}
+      {phase === 'playing' && showTutorial && (
+        <div className="sk__tutorial">
+          <div className="sk__tutorial-step sk__tutorial-step--charge">
+            <div className="sk__tutorial-finger" />
+            <div className="sk__tutorial-trail" />
+            <div className="sk__tutorial-label"><b>HOLD + DRAG</b><span>CHARGE</span></div>
+          </div>
+          <div className="sk__tutorial-step sk__tutorial-step--release">
+            <div className="sk__tutorial-burst" />
+            <div className="sk__tutorial-label"><b>RELEASE</b><span>DASH</span></div>
+          </div>
+          <div className="sk__tutorial-step sk__tutorial-step--flip">
+            <div className="sk__tutorial-flip-arrow" />
+            <div className="sk__tutorial-label"><b>TAP FLIP</b><span>STICK / REPEL</span></div>
+          </div>
+        </div>
       )}
 
       {/* KO banner — flashes when the player downs an opponent */}
