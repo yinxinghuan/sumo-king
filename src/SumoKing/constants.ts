@@ -47,14 +47,15 @@ export const CAMERA_LERP = 0.14;
 // to read the field and start charging.
 export const GRACE_PERIOD = 1.5;
 
-// Mecha palette — each fighter has a chassis tone + chest plate + LED
-// stripe color. Player slot 0 gets the cyan LED so they stand out against
-// the warm lava periphery.
+// Mecha palette — body colors are BRIGHT now so the mechas stand out
+// against the dark navy floor. Previous dark-grey bodies blended into
+// the platform. Each fighter has a distinct chassis hue (silver / red /
+// green / magenta) for at-a-glance identification.
 export const FIGHTER_COLORS = [
-  { body: '#2a3445', chest: '#1a2030', belt: '#4afcff' }, // player — cyan LED
-  { body: '#3a2826', chest: '#241410', belt: '#ff5b3a' }, // Rookie  — red LED
-  { body: '#2a3a26', chest: '#10241a', belt: '#54ff8e' }, // Bruiser — green LED
-  { body: '#382a3a', chest: '#1a1024', belt: '#ff62d2' }, // Sniper  — magenta LED
+  { body: '#a8c0d8', chest: '#5a6e88', belt: '#4afcff' }, // player — bright steel-silver
+  { body: '#d05030', chest: '#7a2a18', belt: '#ff5b3a' }, // Rookie  — bright red
+  { body: '#40c060', chest: '#1a5e2a', belt: '#54ff8e' }, // Bruiser — bright green
+  { body: '#c060c0', chest: '#5a1a5a', belt: '#ff62d2' }, // Sniper  — bright magenta
 ];
 
 export type AiKind = 'rookie' | 'bruiser' | 'sniper';
