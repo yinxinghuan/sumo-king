@@ -12,23 +12,22 @@ import {
   FIGHTER_MAX_HP, DAMAGE_PER_IMPACT_UNIT, KO_EXPLOSION_VELOCITY,
 } from '../constants';
 import type { Polarity } from '../constants';
-import type { Fighter, FxEvent, Stick } from '../types';
+import type { DebrisPiece, Fighter, FxEvent, Stick } from '../types';
+import { FIGHTER_COLORS } from '../constants';
 
 export type SfxKey = 'charge_start' | 'dash' | 'collide' | 'ko' | 'fall' | 'game_over' | 'victory' | 'polarity_flip' | 'magnet_lock' | 'magnet_release';
 
 export interface GameRef {
   fighters: Fighter[];
-  time: number;          // accumulated game time
-  roundT: number;        // elapsed within this round
+  time: number;
+  roundT: number;
   score: number;
   kos: number;
   fx: FxEvent[];
+  debris: DebrisPiece[];   // flying mecha parts from collisions
   initialized: boolean;
   gameOver: boolean;
-  victory: boolean;      // player survived (last one standing or timed out as survivor)
-  // Camera shake amplitude (decays over ~250ms). Bumped on each collide
-  // by an amount that scales with the relative impact velocity. The
-  // camera consumes this to apply a random offset and decays it.
+  victory: boolean;
   shake: number;
 }
 
@@ -161,7 +160,30 @@ export function createGameState(): GameRef {
     gameOver: false,
     victory: false,
     shake: 0,
+    debris: [],
   };
+}
+
+let debrisKey = 1;
+function spawnDebris(d: GameRef, x: number, z: number, color: string, n: number, impact: number) {
+  for (let i = 0; i < n; i++) {
+    const a = Math.random() * Math.PI * 2;
+    const speed = 4 + Math.random() * 8 + impact * 2;
+    const up = 5 + Math.random() * 4 + impact * 1.5;
+    d.debris.push({
+      key: debrisKey++,
+      pos: new THREE.Vector3(x, 1.0 + Math.random() * 0.4, z),
+      vel: new THREE.Vector3(Math.cos(a) * speed, up, Math.sin(a) * speed),
+      rot: new THREE.Vector3(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI),
+      angVel: new THREE.Vector3((Math.random() - 0.5) * 18, (Math.random() - 0.5) * 18, (Math.random() - 0.5) * 18),
+      size: 0.18 + Math.random() * 0.22,
+      color,
+      bornAt: d.time,
+      grounded: false,
+    });
+  }
+  // Cap total debris so old/grounded pieces drop off
+  if (d.debris.length > 80) d.debris.splice(0, d.debris.length - 80);
 }
 
 function chooseAiTarget(d: GameRef, self: Fighter): Fighter | null {
@@ -385,6 +407,36 @@ export function useGameLoop(p: GameLoopParams) {
       }
     }
 
+    // ---- DEBRIS PHYSICS ----
+    // Each piece falls with gravity, spins, settles on the floor, fades
+    // out after a few seconds. Cheap O(N), N capped at 80.
+    for (let i = d.debris.length - 1; i >= 0; i--) {
+      const p = d.debris[i];
+      if (!p.grounded) {
+        p.vel.y -= 22 * c; // gravity
+        p.pos.x += p.vel.x * c;
+        p.pos.y += p.vel.y * c;
+        p.pos.z += p.vel.z * c;
+        p.rot.x += p.angVel.x * c;
+        p.rot.y += p.angVel.y * c;
+        p.rot.z += p.angVel.z * c;
+        if (p.pos.y < p.size * 0.5) {
+          p.pos.y = p.size * 0.5;
+          p.vel.x *= 0.55;
+          p.vel.z *= 0.55;
+          p.vel.y = Math.abs(p.vel.y) > 1.5 ? -p.vel.y * 0.4 : 0;
+          if (Math.abs(p.vel.y) < 0.1) {
+            p.grounded = true;
+            p.angVel.set(0, 0, 0);
+          }
+        }
+      }
+      // Despawn after 2.5s
+      if (d.time - p.bornAt > 2.5) {
+        d.debris.splice(i, 1);
+      }
+    }
+
     // ---- INTEGRATE POSITIONS ----
     for (const f of d.fighters) {
       if (f.state === 'down') continue;
@@ -433,11 +485,21 @@ export function useGameLoop(p: GameLoopParams) {
         const rel = va_n - vb_n;
         if (rel <= 0) continue; // approaching — proceed
         const oppositePoles = a.polarity !== b.polarity;
-        emitFx(d, 'collide', (a.pos.x + b.pos.x) * 0.5, (a.pos.z + b.pos.z) * 0.5);
-        // Camera shake — magnitude scales with impact velocity. Capped so
-        // light grazes don't shake hard. Same-polarity hits hit harder.
+        const cx = (a.pos.x + b.pos.x) * 0.5;
+        const cz = (a.pos.z + b.pos.z) * 0.5;
+        emitFx(d, 'collide', cx, cz);
+        // Camera shake
         const impact = Math.min(1, rel / 18);
         d.shake = Math.min(0.8, d.shake + impact * (oppositePoles ? 0.30 : 0.55));
+        // Spawn debris on REPEL hits — pieces of mecha fly off. Count
+        // scales with impact. Color from one of the involved fighters.
+        if (!oppositePoles) {
+          const debrisN = 3 + Math.floor(impact * 6);
+          const palA = FIGHTER_COLORS[a.paletteIdx % FIGHTER_COLORS.length];
+          const palB = FIGHTER_COLORS[b.paletteIdx % FIGHTER_COLORS.length];
+          spawnDebris(d, cx, cz, palA.body, Math.ceil(debrisN / 2), impact);
+          spawnDebris(d, cx, cz, palB.body, Math.floor(debrisN / 2), impact);
+        }
         if (oppositePoles) {
           // STICK — combine velocities, both enter 'locked' state.
           const sharedVx = (a.vel.x + b.vel.x) * 0.5;

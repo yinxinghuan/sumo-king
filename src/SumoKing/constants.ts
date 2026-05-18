@@ -35,9 +35,9 @@ export const SCORE_PER_SECOND_SURVIVED = 1;
 // velocity. Below thresholds visual states unlock (sparks → smoke → fire).
 export const FIGHTER_MAX_HP = 100;
 export const DAMAGE_PER_IMPACT_UNIT = 4.5;  // multiplied by relative velocity
-export const HP_THRESHOLD_SPARK = 80;       // below this → sparks
-export const HP_THRESHOLD_SMOKE = 65;       // below this → smoke trail
-export const HP_THRESHOLD_FIRE = 35;        // below this → flames
+export const HP_THRESHOLD_ARC   = 85;       // below this → short-circuit electric arcs
+export const HP_THRESHOLD_SMOKE = 55;       // below this → smoke trail (was 65)
+export const HP_THRESHOLD_FIRE  = 25;       // below this → flames (was 35)
 // When HP hits 0, the fighter explodes off the platform — adds an
 // outward velocity kick so they fly off dramatically.
 export const KO_EXPLOSION_VELOCITY = 18;

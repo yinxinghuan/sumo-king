@@ -57,3 +57,18 @@ export interface FxEvent {
   z: number;
   born: number;
 }
+
+// Debris — bits of mecha that fly off on collisions. Each piece has
+// position, velocity (with gravity), and angular velocity for spin. Lives
+// for ~2 seconds before being cleaned up.
+export interface DebrisPiece {
+  key: number;
+  pos: THREE.Vector3;
+  vel: THREE.Vector3;
+  rot: THREE.Vector3;     // current rotation (x,y,z radians)
+  angVel: THREE.Vector3;  // angular velocity (radians/sec on each axis)
+  size: number;
+  color: string;
+  bornAt: number;
+  grounded: boolean;
+}

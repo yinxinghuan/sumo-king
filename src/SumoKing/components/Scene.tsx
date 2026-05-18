@@ -7,7 +7,7 @@ import {
   ARENA_RADIUS, DANGER_RADIUS,
   FIGHTER_COLORS, FIGHTER_RADIUS, FIGHTER_VISUAL_SCALE, CHARGE_TIME_TO_FULL,
   POLARITY_RED, POLARITY_BLUE,
-  HP_THRESHOLD_SMOKE, HP_THRESHOLD_FIRE,
+  HP_THRESHOLD_ARC, HP_THRESHOLD_SMOKE, HP_THRESHOLD_FIRE,
 } from '../constants';
 import { useGameLoop, GameRef, SfxKey } from '../hooks/useGameLoop';
 import type { Fighter, Stick } from '../types';
@@ -211,17 +211,100 @@ function PolarityBall({ fighter }: { fighter: Fighter }) {
   );
 }
 
-// Damage visuals — smoke + fire that appear progressively as HP drops.
-// Sits inside the fighter's bounce group so it follows the body.
+// Flying debris from collisions. Each piece is a small spinning box with
+// the donor fighter's body color. Physics live in the game loop; this
+// component just renders each piece via per-frame ref updates.
+function Debris({ state }: { state: React.MutableRefObject<GameRef> }) {
+  const meshRefs = useRef<Map<number, THREE.Mesh>>(new Map());
+  const matRefs = useRef<Map<number, THREE.MeshStandardMaterial>>(new Map());
+  const [, force] = useState(0);
+  const lastCount = useRef(0);
+  useFrame(() => {
+    const d = state.current;
+    if (d.debris.length !== lastCount.current) {
+      lastCount.current = d.debris.length;
+      force(x => x + 1);
+    }
+    for (const p of d.debris) {
+      const mesh = meshRefs.current.get(p.key);
+      const mat = matRefs.current.get(p.key);
+      if (!mesh || !mat) continue;
+      mesh.position.copy(p.pos);
+      mesh.rotation.set(p.rot.x, p.rot.y, p.rot.z);
+      mesh.scale.setScalar(p.size);
+      // Fade as it ages past 1.5s
+      const age = d.time - p.bornAt;
+      mat.opacity = age < 1.5 ? 1.0 : Math.max(0, 1 - (age - 1.5) / 1.0);
+      mat.transparent = age >= 1.5;
+    }
+  });
+  const d = state.current;
+  return (
+    <>
+      {d.debris.map(p => (
+        <mesh
+          key={p.key}
+          ref={el => {
+            if (el) {
+              meshRefs.current.set(p.key, el);
+              matRefs.current.set(p.key, el.material as THREE.MeshStandardMaterial);
+            } else {
+              meshRefs.current.delete(p.key);
+              matRefs.current.delete(p.key);
+            }
+          }}
+          castShadow
+        >
+          <boxGeometry args={[1, 1, 1]} />
+          <meshStandardMaterial color={p.color} roughness={0.5} metalness={0.6} />
+        </mesh>
+      ))}
+    </>
+  );
+}
+
+// Damage visuals — progressive stages as HP drops:
+//   HP < ARC   (85): electric arcs flicker on body (bright cyan/white short lines)
+//   HP < SMOKE (55): smoke puffs from chest
+//   HP < FIRE  (25): orange flame cones on body
 function DamageFx({ fighter }: { fighter: Fighter }) {
   const smokeRefs = useRef<(THREE.Mesh | null)[]>([]);
   const fireRefs = useRef<(THREE.Mesh | null)[]>([]);
   const smokeMats = useRef<(THREE.MeshBasicMaterial | null)[]>([]);
   const fireMats = useRef<(THREE.MeshBasicMaterial | null)[]>([]);
+  const arcRefs = useRef<(THREE.Mesh | null)[]>([]);
+  const arcMats = useRef<(THREE.MeshBasicMaterial | null)[]>([]);
   useFrame(({ clock }) => {
     const t = clock.getElapsedTime();
+    const arcOn   = fighter.hp < HP_THRESHOLD_ARC;
     const smokeOn = fighter.hp < HP_THRESHOLD_SMOKE;
     const fireOn  = fighter.hp < HP_THRESHOLD_FIRE;
+    // Electric arcs — 4 short bright segments that randomly reposition
+    // and flicker on/off every 0.08-0.16s
+    for (let i = 0; i < 4; i++) {
+      const mesh = arcRefs.current[i];
+      const mat = arcMats.current[i];
+      if (!mesh || !mat) continue;
+      // Slot-stable arc cycle so flicker isn't all-in-phase
+      const cycleT = (t * 8 + i * 1.7) % 1;
+      const visibleNow = arcOn && cycleT < 0.5;
+      mesh.visible = visibleNow;
+      if (visibleNow) {
+        // Snap to a new random position each cycle
+        const cycleInt = Math.floor(t * 8 + i * 1.7);
+        const seed = (cycleInt * 7919 + i * 1031) & 0xffff;
+        const ax = ((seed * 9301 + 49297) % 233280) / 233280;
+        const ay = ((seed * 4093 + 1019) % 233280) / 233280;
+        const az = ((seed * 1597 + 51749) % 233280) / 233280;
+        mesh.position.set(
+          (ax - 0.5) * 0.65,
+          0.85 + ay * 0.7,
+          (az - 0.5) * 0.65,
+        );
+        mesh.rotation.set((ax - 0.5) * 3, (ay - 0.5) * 3, (az - 0.5) * 3);
+        mat.opacity = 0.95;
+      }
+    }
     // 3 smoke puffs animate up + fade
     for (let i = 0; i < 3; i++) {
       const mesh = smokeRefs.current[i];
@@ -260,6 +343,18 @@ function DamageFx({ fighter }: { fighter: Fighter }) {
   });
   return (
     <>
+      {/* Electric arcs — first damage stage. Cyan/white short lines that
+          flicker on/off + reposition rapidly on the body. */}
+      {[0, 1, 2, 3].map(i => (
+        <mesh
+          key={`a${i}`}
+          ref={el => { arcRefs.current[i] = el; if (el) arcMats.current[i] = el.material as THREE.MeshBasicMaterial; }}
+          visible={false}
+        >
+          <boxGeometry args={[0.04, 0.04, 0.55]} />
+          <meshBasicMaterial color="#bcefff" transparent opacity={0.95} depthWrite={false} blending={THREE.AdditiveBlending} />
+        </mesh>
+      ))}
       {[0, 1, 2].map(i => (
         <mesh
           key={`s${i}`}
@@ -734,6 +829,7 @@ export function Scene(props: SceneProps) {
       />
       <Arena />
       <CollideSparks state={state} />
+      <Debris state={state} />
       <Fighters state={state} />
     </>
   );
