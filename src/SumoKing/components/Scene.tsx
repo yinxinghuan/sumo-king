@@ -7,6 +7,7 @@ import {
   ARENA_RADIUS, DANGER_RADIUS,
   FIGHTER_COLORS, FIGHTER_RADIUS, FIGHTER_VISUAL_SCALE, CHARGE_TIME_TO_FULL,
   POLARITY_RED, POLARITY_BLUE,
+  HP_THRESHOLD_SMOKE, HP_THRESHOLD_FIRE,
 } from '../constants';
 import { useGameLoop, GameRef, SfxKey } from '../hooks/useGameLoop';
 import type { Fighter, Stick } from '../types';
@@ -110,6 +111,28 @@ function Arena() {
         <circleGeometry args={[ARENA_RADIUS * 0.55, 48]} />
         <meshStandardMaterial color="#070d18" roughness={0.5} metalness={0.50} />
       </mesh>
+      {/* Concentric reference rings — let the player gauge how far from
+          center they are. Cyan-tinted, subtle. */}
+      {[5, 8, 11].map((r, i) => (
+        <mesh key={`r${i}`} position={[0, 0.007, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+          <ringGeometry args={[r - 0.045, r + 0.045, 64]} />
+          <meshBasicMaterial color="#36e4ff" transparent opacity={0.16} depthWrite={false} blending={THREE.AdditiveBlending} />
+        </mesh>
+      ))}
+      {/* Cardinal cross lines — N/S/E/W spokes for orientation */}
+      <mesh position={[0, 0.008, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+        <planeGeometry args={[0.18, ARENA_RADIUS * 2 - 0.5]} />
+        <meshBasicMaterial color="#36e4ff" transparent opacity={0.18} depthWrite={false} blending={THREE.AdditiveBlending} />
+      </mesh>
+      <mesh position={[0, 0.008, 0]} rotation={[-Math.PI / 2, 0, Math.PI / 2]}>
+        <planeGeometry args={[0.18, ARENA_RADIUS * 2 - 0.5]} />
+        <meshBasicMaterial color="#36e4ff" transparent opacity={0.18} depthWrite={false} blending={THREE.AdditiveBlending} />
+      </mesh>
+      {/* Center spot — a small bright pip on the spawn ring origin */}
+      <mesh position={[0, 0.010, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+        <ringGeometry args={[0.35, 0.55, 32]} />
+        <meshBasicMaterial color="#36e4ff" transparent opacity={0.50} depthWrite={false} blending={THREE.AdditiveBlending} />
+      </mesh>
       {/* Danger band — magenta neon strip */}
       <mesh position={[0, 0.015, 0]} rotation={[-Math.PI / 2, 0, 0]}>
         <ringGeometry args={[DANGER_RADIUS, ARENA_RADIUS - 0.15, 64]} />
@@ -197,9 +220,8 @@ function DamageFx({ fighter }: { fighter: Fighter }) {
   const fireMats = useRef<(THREE.MeshBasicMaterial | null)[]>([]);
   useFrame(({ clock }) => {
     const t = clock.getElapsedTime();
-    const hpRatio = fighter.hp / fighter.maxHp;
-    const smokeOn = hpRatio < 0.45;
-    const fireOn = hpRatio < 0.22;
+    const smokeOn = fighter.hp < HP_THRESHOLD_SMOKE;
+    const fireOn  = fighter.hp < HP_THRESHOLD_FIRE;
     // 3 smoke puffs animate up + fade
     for (let i = 0; i < 3; i++) {
       const mesh = smokeRefs.current[i];
@@ -524,12 +546,25 @@ function Fighters({ state }: { state: React.MutableRefObject<GameRef> }) {
   );
 }
 
-// Collide sparks — small additive burst on each FxEvent of type 'collide'.
-// We piggyback on the fx ring buffer in state.
+// Collide sparks — every collision drops a bright multi-layered burst at
+// the impact point:
+//   • A central white flash (large additive sphere, brief)
+//   • An expanding shock ring on the floor
+//   • 8 streak particles flying outward in random directions
+// All additive so they POP visibly against the dark floor.
+const SPARK_COUNT = 8;
+const SPARK_LIFE = 0.55;
+
+interface SparkSeed { dirs: { x: number; z: number; speed: number }[] }
+
 function CollideSparks({ state }: { state: React.MutableRefObject<GameRef> }) {
-  const groupRef = useRef<THREE.Group>(null);
   const ringRefs = useRef<Map<number, THREE.Mesh>>(new Map());
   const ringMats = useRef<Map<number, THREE.MeshBasicMaterial>>(new Map());
+  const flashRefs = useRef<Map<number, THREE.Mesh>>(new Map());
+  const flashMats = useRef<Map<number, THREE.MeshBasicMaterial>>(new Map());
+  const sparkRefs = useRef<Map<number, THREE.Mesh[]>>(new Map());
+  const sparkMats = useRef<Map<number, THREE.MeshBasicMaterial[]>>(new Map());
+  const seeds = useRef<Map<number, SparkSeed>>(new Map());
   const [, force] = useState(0);
   const lastCount = useRef(0);
   useFrame(() => {
@@ -540,44 +575,127 @@ function CollideSparks({ state }: { state: React.MutableRefObject<GameRef> }) {
       force(x => x + 1);
     }
     for (const fx of collideFx) {
-      const mesh = ringRefs.current.get(fx.key);
-      const mat = ringMats.current.get(fx.key);
-      if (!mesh || !mat) continue;
       const age = d.time - fx.born;
-      if (age < 0 || age > 0.5) {
-        mesh.visible = false;
+      if (age < 0 || age > SPARK_LIFE) {
+        const ring = ringRefs.current.get(fx.key);
+        const flash = flashRefs.current.get(fx.key);
+        const sparks = sparkRefs.current.get(fx.key);
+        if (ring) ring.visible = false;
+        if (flash) flash.visible = false;
+        if (sparks) for (const s of sparks) s.visible = false;
         continue;
       }
-      mesh.visible = true;
-      const t = age / 0.5;
-      mesh.position.set(fx.x, 0.1, fx.z);
-      mesh.scale.setScalar(0.3 + t * 2.2);
-      mat.opacity = 0.9 * (1 - t);
+      // Make sure we have a seed for this fx
+      let seed = seeds.current.get(fx.key);
+      if (!seed) {
+        const dirs: { x: number; z: number; speed: number }[] = [];
+        for (let i = 0; i < SPARK_COUNT; i++) {
+          const a = Math.random() * Math.PI * 2;
+          dirs.push({ x: Math.cos(a), z: Math.sin(a), speed: 4 + Math.random() * 6 });
+        }
+        seed = { dirs };
+        seeds.current.set(fx.key, seed);
+      }
+      const tt = age / SPARK_LIFE;
+      // Floor ring
+      const ring = ringRefs.current.get(fx.key);
+      const ringMat = ringMats.current.get(fx.key);
+      if (ring && ringMat) {
+        ring.visible = true;
+        ring.position.set(fx.x, 0.12, fx.z);
+        ring.scale.setScalar(0.5 + tt * 3.0);
+        ringMat.opacity = 0.9 * (1 - tt);
+      }
+      // Center flash
+      const flash = flashRefs.current.get(fx.key);
+      const flashMat = flashMats.current.get(fx.key);
+      if (flash && flashMat) {
+        flash.visible = tt < 0.35;
+        flash.position.set(fx.x, 0.8, fx.z);
+        const fs = 1 + tt * 4;
+        flash.scale.setScalar(fs);
+        flashMat.opacity = (1 - tt / 0.35) * 0.95;
+      }
+      // Streak particles
+      const sparks = sparkRefs.current.get(fx.key);
+      const sMats = sparkMats.current.get(fx.key);
+      if (sparks && sMats && seed) {
+        for (let i = 0; i < SPARK_COUNT; i++) {
+          const sp = sparks[i];
+          const sm = sMats[i];
+          if (!sp || !sm) continue;
+          const dir = seed.dirs[i];
+          // Position: outward + slight up arc
+          const dist = dir.speed * age * (1 - tt * 0.5);
+          sp.position.set(fx.x + dir.x * dist, 0.5 + Math.sin(tt * Math.PI) * 0.6, fx.z + dir.z * dist);
+          sp.visible = true;
+          const sz = 0.28 * (1 - tt * 0.8);
+          sp.scale.setScalar(sz);
+          sm.opacity = (1 - tt) * 0.95;
+        }
+      }
     }
   });
   const d = state.current;
   return (
-    <group ref={groupRef}>
+    <>
       {d.fx.filter(f => f.type === 'collide').map(fx => (
-        <mesh
-          key={fx.key}
-          rotation={[-Math.PI / 2, 0, 0]}
-          visible={false}
-          ref={el => {
-            if (el) {
-              ringRefs.current.set(fx.key, el);
-              ringMats.current.set(fx.key, el.material as THREE.MeshBasicMaterial);
-            } else {
-              ringRefs.current.delete(fx.key);
-              ringMats.current.delete(fx.key);
-            }
-          }}
-        >
-          <ringGeometry args={[0.3, 0.6, 24]} />
-          <meshBasicMaterial color="#fff2c0" transparent opacity={0.9} depthWrite={false} blending={THREE.AdditiveBlending} />
-        </mesh>
+        <group key={fx.key}>
+          {/* Floor ring */}
+          <mesh
+            rotation={[-Math.PI / 2, 0, 0]}
+            visible={false}
+            ref={el => {
+              if (el) {
+                ringRefs.current.set(fx.key, el);
+                ringMats.current.set(fx.key, el.material as THREE.MeshBasicMaterial);
+              } else {
+                ringRefs.current.delete(fx.key);
+                ringMats.current.delete(fx.key);
+              }
+            }}
+          >
+            <ringGeometry args={[0.5, 0.8, 28]} />
+            <meshBasicMaterial color="#fff5a0" transparent opacity={0.9} depthWrite={false} blending={THREE.AdditiveBlending} />
+          </mesh>
+          {/* Center white flash */}
+          <mesh
+            visible={false}
+            ref={el => {
+              if (el) {
+                flashRefs.current.set(fx.key, el);
+                flashMats.current.set(fx.key, el.material as THREE.MeshBasicMaterial);
+              } else {
+                flashRefs.current.delete(fx.key);
+                flashMats.current.delete(fx.key);
+              }
+            }}
+          >
+            <sphereGeometry args={[0.50, 14, 10]} />
+            <meshBasicMaterial color="#ffffff" transparent opacity={0.95} depthWrite={false} blending={THREE.AdditiveBlending} />
+          </mesh>
+          {/* Streak particles */}
+          {Array.from({ length: SPARK_COUNT }).map((_, i) => (
+            <mesh
+              key={i}
+              visible={false}
+              ref={el => {
+                if (!el) return;
+                let arr = sparkRefs.current.get(fx.key);
+                let mats = sparkMats.current.get(fx.key);
+                if (!arr) { arr = []; sparkRefs.current.set(fx.key, arr); }
+                if (!mats) { mats = []; sparkMats.current.set(fx.key, mats); }
+                arr[i] = el;
+                mats[i] = el.material as THREE.MeshBasicMaterial;
+              }}
+            >
+              <sphereGeometry args={[1.0, 8, 6]} />
+              <meshBasicMaterial color="#ffd060" transparent opacity={0.95} depthWrite={false} blending={THREE.AdditiveBlending} />
+            </mesh>
+          ))}
+        </group>
       ))}
-    </group>
+    </>
   );
 }
 
