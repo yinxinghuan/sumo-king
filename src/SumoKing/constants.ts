@@ -31,6 +31,17 @@ export const PLAYER_COUNT_AI = 3;          // 1 human + 3 AI
 export const SCORE_KO = 50;
 export const SCORE_PER_SECOND_SURVIVED = 1;
 
+// Health — base HP per fighter. Damage scales with collision impact
+// velocity. Below thresholds visual states unlock (sparks → smoke → fire).
+export const FIGHTER_MAX_HP = 100;
+export const DAMAGE_PER_IMPACT_UNIT = 4.5;  // multiplied by relative velocity
+export const HP_THRESHOLD_SPARK = 75;       // below this → sparks
+export const HP_THRESHOLD_SMOKE = 45;       // below this → smoke trail
+export const HP_THRESHOLD_FIRE = 22;        // below this → flames
+// When HP hits 0, the fighter explodes off the platform — adds an
+// outward velocity kick so they fly off dramatically.
+export const KO_EXPLOSION_VELOCITY = 18;
+
 // AI behavior
 export const AI_REACT_INTERVAL_MIN = 0.4;  // re-evaluate target every 0.4..1.0s
 export const AI_REACT_INTERVAL_MAX = 1.0;

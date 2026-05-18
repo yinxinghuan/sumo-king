@@ -9,6 +9,7 @@ import {
   AI_LINEUP, GRACE_PERIOD,
   POLARITY_LOCK_DURATION, POLARITY_RELEASE_KICK,
   AI_POLARITY_REVIEW_MIN, AI_POLARITY_REVIEW_MAX, LOCK_FRICTION_PER_SEC,
+  FIGHTER_MAX_HP, DAMAGE_PER_IMPACT_UNIT, KO_EXPLOSION_VELOCITY,
 } from '../constants';
 import type { Polarity } from '../constants';
 import type { Fighter, FxEvent, Stick } from '../types';
@@ -25,6 +26,10 @@ export interface GameRef {
   initialized: boolean;
   gameOver: boolean;
   victory: boolean;      // player survived (last one standing or timed out as survivor)
+  // Camera shake amplitude (decays over ~250ms). Bumped on each collide
+  // by an amount that scales with the relative impact velocity. The
+  // camera consumes this to apply a random offset and decays it.
+  shake: number;
 }
 
 let nextId = 1;
@@ -108,6 +113,10 @@ export function createGameState(): GameRef {
     dashT: 0,
     dashDirX: 0, dashDirZ: 0, dashCharge: 0,
     fallT: 0,
+    hp: FIGHTER_MAX_HP,
+    maxHp: FIGHTER_MAX_HP,
+    lastHitById: null,
+    damagedFx: [],
     lockedToId: null,
     lockT: 0,
     aiNextDecisionT: 0,
@@ -130,6 +139,10 @@ export function createGameState(): GameRef {
       dashT: 0,
       dashDirX: 0, dashDirZ: 0, dashCharge: 0,
       fallT: 0,
+      hp: FIGHTER_MAX_HP,
+      maxHp: FIGHTER_MAX_HP,
+      lastHitById: null,
+      damagedFx: [],
       lockedToId: null,
       lockT: 0,
       aiNextDecisionT: GRACE_PERIOD + (AI_REACT_INTERVAL_MIN + Math.random() * (AI_REACT_INTERVAL_MAX - AI_REACT_INTERVAL_MIN)),
@@ -147,6 +160,7 @@ export function createGameState(): GameRef {
     initialized: true,
     gameOver: false,
     victory: false,
+    shake: 0,
   };
 }
 
@@ -309,6 +323,8 @@ export function useGameLoop(p: GameLoopParams) {
     const c = Math.min(delta, 0.05);
     d.time += c;
     d.roundT += c;
+    // Decay shake every frame (returns to 0 in ~250ms)
+    d.shake = Math.max(0, d.shake - c * 4.5);
     p.onTimeLeft(Math.max(0, ROUND_TIME - d.roundT));
 
     const player = d.fighters.find(f => f.isPlayer);
@@ -418,6 +434,10 @@ export function useGameLoop(p: GameLoopParams) {
         if (rel <= 0) continue; // approaching — proceed
         const oppositePoles = a.polarity !== b.polarity;
         emitFx(d, 'collide', (a.pos.x + b.pos.x) * 0.5, (a.pos.z + b.pos.z) * 0.5);
+        // Camera shake — magnitude scales with impact velocity. Capped so
+        // light grazes don't shake hard. Same-polarity hits hit harder.
+        const impact = Math.min(1, rel / 18);
+        d.shake = Math.min(0.8, d.shake + impact * (oppositePoles ? 0.30 : 0.55));
         if (oppositePoles) {
           // STICK — combine velocities, both enter 'locked' state.
           const sharedVx = (a.vel.x + b.vel.x) * 0.5;
@@ -437,7 +457,7 @@ export function useGameLoop(p: GameLoopParams) {
           p.playSfx('magnet_lock');
           p.haptic?.('heavy');
         } else {
-          // REPEL — current shove physics
+          // REPEL — shove physics + DAMAGE
           a.vel.x += (-rel * (1 - COLLIDE_BOUNCE)) * nx;
           a.vel.z += (-rel * (1 - COLLIDE_BOUNCE)) * nz;
           b.vel.x += (rel * COLLIDE_TRANSFER) * nx;
@@ -447,6 +467,29 @@ export function useGameLoop(p: GameLoopParams) {
           if (wasHeavy) p.haptic?.('heavy'); else p.haptic?.('light');
           if (a.state === 'dashing') { a.state = 'slide'; a.dashT = DASH_PEAK_DURATION; }
           if (b.state === 'dashing') { b.state = 'slide'; b.dashT = DASH_PEAK_DURATION; }
+          // Damage scales with closing velocity. The DEFENDER (the one
+          // that wasn't dashing into the other) takes the most damage,
+          // because they're absorbing the dasher's momentum.
+          const dmg = rel * DAMAGE_PER_IMPACT_UNIT;
+          if (a.state === 'slide' && b.state !== 'slide') {
+            // a was the attacker (it dashed and just dropped into slide)
+            b.hp = Math.max(0, b.hp - dmg);
+            b.lastHitById = a.id;
+            b.damagedFx.push({ x: -nx * FIGHTER_RADIUS, z: -nz * FIGHTER_RADIUS, born: d.time });
+            if (b.damagedFx.length > 6) b.damagedFx.shift();
+          } else if (b.state === 'slide' && a.state !== 'slide') {
+            a.hp = Math.max(0, a.hp - dmg);
+            a.lastHitById = b.id;
+            a.damagedFx.push({ x: nx * FIGHTER_RADIUS, z: nz * FIGHTER_RADIUS, born: d.time });
+            if (a.damagedFx.length > 6) a.damagedFx.shift();
+          } else {
+            // Mutual bump — split damage
+            const half = dmg * 0.5;
+            a.hp = Math.max(0, a.hp - half);
+            b.hp = Math.max(0, b.hp - half);
+            a.lastHitById = b.id;
+            b.lastHitById = a.id;
+          }
         }
       }
     }
@@ -503,6 +546,27 @@ export function useGameLoop(p: GameLoopParams) {
       a.vel.z = sharedVz * k;
       b.vel.x = sharedVx * k;
       b.vel.z = sharedVz * k;
+    }
+
+    // ---- HP-ZERO EXPLOSION ----
+    // When a fighter's HP hits 0, they get launched outward with high
+    // velocity so they dramatically fly off the platform. Damage KO is
+    // credited to whoever last hit them.
+    for (const f of d.fighters) {
+      if (!alive(f) || f.hp > 0) continue;
+      const r = Math.hypot(f.pos.x, f.pos.z);
+      if (r < 0.001) {
+        // At origin — pick a random direction
+        const a = Math.random() * Math.PI * 2;
+        f.vel.x = Math.cos(a) * KO_EXPLOSION_VELOCITY;
+        f.vel.z = Math.sin(a) * KO_EXPLOSION_VELOCITY;
+      } else {
+        f.vel.x = (f.pos.x / r) * KO_EXPLOSION_VELOCITY;
+        f.vel.z = (f.pos.z / r) * KO_EXPLOSION_VELOCITY;
+      }
+      // Force them into slide so they keep moving
+      f.state = 'slide';
+      f.dashT = DASH_PEAK_DURATION;
     }
 
     // ---- FALL-OFF DETECTION ----

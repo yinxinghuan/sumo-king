@@ -34,9 +34,16 @@ export interface Fighter {
   dashDirZ: number;
   dashCharge: number;
   fallT: number;
+  // Health — mechas take damage from collisions. Below thresholds they
+  // show sparks → smoke → fire visual stages. HP=0 = KO'd (counts as a
+  // kill for whoever last hit them).
+  hp: number;
+  maxHp: number;
+  lastHitById: number | null; // for KO attribution
+  damagedFx: { x: number; z: number; born: number }[]; // local impact points
   // Polarity lock
-  lockedToId: number | null; // id of the partner fighter when state='locked'
-  lockT: number;             // remaining lock time
+  lockedToId: number | null;
+  lockT: number;
   // AI scratch
   aiNextDecisionT: number;
   aiTargetId: number | null;

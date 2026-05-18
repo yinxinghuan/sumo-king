@@ -11,6 +11,18 @@ import {
 import { useGameLoop, GameRef, SfxKey } from '../hooks/useGameLoop';
 import type { Fighter, Stick } from '../types';
 
+// 2D triangle shape for the aim arrowhead. Built in XY plane with the
+// tip pointing along local +Y; after the mesh's rotation x = -π/2 lies
+// flat with tip toward world +Z (the player's facing direction).
+const ARROW_HEAD_SHAPE = (() => {
+  const s = new THREE.Shape();
+  s.moveTo(-0.85, 0);
+  s.lineTo( 0.85, 0);
+  s.lineTo( 0,    1.4);
+  s.closePath();
+  return s;
+})();
+
 interface SceneProps {
   state: React.MutableRefObject<GameRef>;
   playing: boolean;
@@ -38,14 +50,21 @@ function ArenaCamera({ state }: { state: React.MutableRefObject<GameRef> }) {
     (camera as THREE.PerspectiveCamera).updateProjectionMatrix();
   }, [camera, size.width, size.height]);
   useFrame(() => {
-    const player = state.current.fighters.find(f => f.isPlayer);
+    const d = state.current;
+    const player = d.fighters.find(f => f.isPlayer);
     const px = player ? player.pos.x : 0;
     const pz = player ? player.pos.z : 0;
-    // Soft follow — only shift partway toward the player.
     const lookX = px * CAMERA_FOLLOW;
     const lookZ = pz * CAMERA_FOLLOW;
     targetCur.current.set(lookX + offset.current.x, offset.current.y, lookZ + offset.current.z);
     camera.position.lerp(targetCur.current, CAMERA_LERP);
+    // Apply collision shake — random offset that decays via d.shake.
+    if (d.shake > 0) {
+      const s = d.shake;
+      camera.position.x += (Math.random() - 0.5) * s * 1.4;
+      camera.position.y += (Math.random() - 0.5) * s * 0.6;
+      camera.position.z += (Math.random() - 0.5) * s * 1.4;
+    }
     lookAtCur.current.set(lookX, 0, lookZ);
     camera.lookAt(lookAtCur.current);
   });
@@ -169,6 +188,80 @@ function PolarityBall({ fighter }: { fighter: Fighter }) {
   );
 }
 
+// Damage visuals — smoke + fire that appear progressively as HP drops.
+// Sits inside the fighter's bounce group so it follows the body.
+function DamageFx({ fighter }: { fighter: Fighter }) {
+  const smokeRefs = useRef<(THREE.Mesh | null)[]>([]);
+  const fireRefs = useRef<(THREE.Mesh | null)[]>([]);
+  const smokeMats = useRef<(THREE.MeshBasicMaterial | null)[]>([]);
+  const fireMats = useRef<(THREE.MeshBasicMaterial | null)[]>([]);
+  useFrame(({ clock }) => {
+    const t = clock.getElapsedTime();
+    const hpRatio = fighter.hp / fighter.maxHp;
+    const smokeOn = hpRatio < 0.45;
+    const fireOn = hpRatio < 0.22;
+    // 3 smoke puffs animate up + fade
+    for (let i = 0; i < 3; i++) {
+      const mesh = smokeRefs.current[i];
+      const mat = smokeMats.current[i];
+      if (!mesh || !mat) continue;
+      mesh.visible = smokeOn;
+      if (smokeOn) {
+        const phase = (t * 0.9 + i * 0.33) % 1.0;
+        mesh.position.set(
+          (Math.sin(t * 2 + i * 2.1) * 0.20),
+          1.15 + phase * 1.5,
+          (Math.cos(t * 1.7 + i * 1.3) * 0.20),
+        );
+        const grow = 0.10 + phase * 0.25;
+        mesh.scale.setScalar(grow);
+        mat.opacity = (1 - phase) * 0.55;
+      }
+    }
+    // 3 fire flames flicker
+    for (let i = 0; i < 3; i++) {
+      const mesh = fireRefs.current[i];
+      const mat = fireMats.current[i];
+      if (!mesh || !mat) continue;
+      mesh.visible = fireOn;
+      if (fireOn) {
+        const flick = 0.7 + Math.sin(t * 13 + i * 1.7) * 0.25 + Math.sin(t * 21 + i) * 0.10;
+        mesh.scale.set(0.18 * flick, 0.36 * flick, 0.18 * flick);
+        mesh.position.set(
+          Math.sin(t * 8 + i) * 0.18,
+          1.0 + Math.sin(t * 5 + i * 0.6) * 0.08,
+          Math.cos(t * 9 + i) * 0.18,
+        );
+        mat.opacity = 0.85 + Math.sin(t * 17 + i) * 0.10;
+      }
+    }
+  });
+  return (
+    <>
+      {[0, 1, 2].map(i => (
+        <mesh
+          key={`s${i}`}
+          ref={el => { smokeRefs.current[i] = el; if (el) smokeMats.current[i] = el.material as THREE.MeshBasicMaterial; }}
+          visible={false}
+        >
+          <sphereGeometry args={[1.0, 8, 6]} />
+          <meshBasicMaterial color="#1a1a1c" transparent opacity={0.45} depthWrite={false} />
+        </mesh>
+      ))}
+      {[0, 1, 2].map(i => (
+        <mesh
+          key={`f${i}`}
+          ref={el => { fireRefs.current[i] = el; if (el) fireMats.current[i] = el.material as THREE.MeshBasicMaterial; }}
+          visible={false}
+        >
+          <coneGeometry args={[1.0, 1.0, 8]} />
+          <meshBasicMaterial color="#ff7820" transparent opacity={0.9} depthWrite={false} blending={THREE.AdditiveBlending} />
+        </mesh>
+      ))}
+    </>
+  );
+}
+
 // A single mecha fighter. Chassis is steel boxes + a sensor-eye sphere +
 // antenna. The belt is now a glowing LED stripe around the waist matching
 // the fighter's color slot. Bounce + lean animation preserved from v0.
@@ -258,17 +351,15 @@ function MechaFighter({ fighter }: { fighter: Fighter }) {
         aimArrowRef.current.visible = charging;
         if (charging) {
           const f = Math.min(1, fighter.chargeT / CHARGE_TIME_TO_FULL);
-          // Near end fixed past the body (z=2.0 in local). Arrow grows
-          // outward from there based on charge: 1.0u (no charge) to 6.0u
-          // (full). Arrowhead sits at the far end.
+          // Near end fixed at z = NEAR_Z (past the body). Arrow grows
+          // outward from there. After rotation.x = +π/2, plane's local
+          // +Y maps to world +Z, so we scale Y to stretch the length.
           const NEAR_Z = 2.0;
           const length = 1.0 + f * 5.0;
-          // Shaft is a unit plane scaled by length, centered at NEAR_Z + length/2
-          aimShaftRef.current.scale.set(1.0 + f * 0.5, 1, length);
+          aimShaftRef.current.scale.set(1.0 + f * 0.5, length, 1);
           aimShaftRef.current.position.z = NEAR_Z + length / 2;
-          // Arrowhead sits at far end
           aimHeadRef.current.scale.setScalar(0.85 + f * 0.5);
-          aimHeadRef.current.position.z = NEAR_Z + length + 0.20;
+          aimHeadRef.current.position.z = NEAR_Z + length + 0.10;
           // Color: cyan → magenta → plasma red
           const r = Math.floor(60 + f * 195);
           const g = Math.floor(220 - f * 200);
@@ -310,21 +401,21 @@ function MechaFighter({ fighter }: { fighter: Fighter }) {
           </mesh>
         </group>
       )}
-      {/* PLAYER-ONLY: aim arrow on the floor. Near end is fixed past the
-          body; the far end stretches with charge level. Shaft + head are
-          re-positioned each frame via refs (group scale would also move
-          the near end). */}
+      {/* PLAYER-ONLY: aim arrow on the floor — a flat line + 2D triangle
+          arrowhead. Both meshes lie flat (rotation X = -π/2). Triangle
+          shape is built so its tip points along world +Z after rotation. */}
       {fighter.isPlayer && (
         <group ref={aimArrowRef} visible={false}>
-          {/* Shaft — unit plane along z, scaled per-frame */}
-          <mesh ref={aimShaftRef} position={[0, 0.10, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-            <planeGeometry args={[1.2, 1.0]} />
-            <meshBasicMaterial ref={aimArrowMat} color="#4afcff" transparent opacity={0.92} depthWrite={false} blending={THREE.AdditiveBlending} side={THREE.DoubleSide} />
+          {/* Shaft — narrow rectangle (a "line"). rotation x=+π/2 lays
+              the plane flat with local +Y → world +Z. */}
+          <mesh ref={aimShaftRef} position={[0, 0.10, 0]} rotation={[Math.PI / 2, 0, 0]}>
+            <planeGeometry args={[0.40, 1.0]} />
+            <meshBasicMaterial ref={aimArrowMat} color="#4afcff" transparent opacity={0.95} depthWrite={false} blending={THREE.AdditiveBlending} side={THREE.DoubleSide} />
           </mesh>
-          {/* Arrowhead — re-positioned at far end of shaft each frame */}
-          <mesh ref={aimHeadRef} position={[0, 0.12, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-            <coneGeometry args={[1.0, 1.4, 3]} />
-            <meshBasicMaterial color="#ffffff" transparent opacity={0.95} depthWrite={false} blending={THREE.AdditiveBlending} />
+          {/* Arrowhead — flat 2D triangle, tip toward world +Z */}
+          <mesh ref={aimHeadRef} position={[0, 0.12, 0]} rotation={[Math.PI / 2, 0, 0]}>
+            <shapeGeometry args={[ARROW_HEAD_SHAPE]} />
+            <meshBasicMaterial color="#ffffff" transparent opacity={0.95} depthWrite={false} blending={THREE.AdditiveBlending} side={THREE.DoubleSide} />
           </mesh>
         </group>
       )}
@@ -336,6 +427,7 @@ function MechaFighter({ fighter }: { fighter: Fighter }) {
       {/* All body parts scale up uniformly via FIGHTER_VISUAL_SCALE so the
           mechas read clearly on a phone without changing collision math. */}
       <group ref={bounceRef} scale={FIGHTER_VISUAL_SCALE}>
+        <DamageFx fighter={fighter} />
         {/* Lower hull — wider base */}
         <mesh position={[0, 0.32, 0]} castShadow>
           <cylinderGeometry args={[0.48, 0.52, 0.30, 10]} />
