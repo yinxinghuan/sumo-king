@@ -14,7 +14,138 @@
       radial-gradient(60% 30% at 50% 100%, rgba(255, 90, 24, .55) 0%, rgba(255, 90, 24, 0) 70%),
       radial-gradient(80% 60% at 50% 0%, #1a2a4a 0%, #0e1830 55%, #04060f 100%);
   }
+}
 
+// ===== POSTER MODE LINEUP (kept outside .sk-splash so .sk-splash--poster
+// doesn't break the BEM &__ scope of the existing splash rules) =====
+.sk-splash--poster {
+  .sk-splash__content {
+    justify-content: flex-start;
+    padding-top: 7%;
+    padding-bottom: 0;
+  }
+  .sk-splash__subtitle {
+    font-size: 13px;
+    color: rgba(180, 230, 255, .80);
+    margin: 4px 0 0;
+    letter-spacing: .32em;
+  }
+  // Hide the small in-content best chip in poster mode (poster shows no best)
+  .sk-splash__best { display: none; }
+}
+
+.sk-splash__title--poster {
+  flex-direction: column !important;
+  align-items: center !important;
+  gap: 0 !important;
+  line-height: .82 !important;
+  margin: 2% 0 6px !important;
+  font-size: clamp(96px, 30vw, 200px) !important;
+  letter-spacing: .04em !important;
+  text-shadow:
+    0 6px 0  rgba(0, 0, 0, .55),
+    0 14px 50px rgba(255, 150, 60, .55),
+    0 0 120px rgba(255, 180, 90, .30) !important;
+}
+
+.sk-poster-lineup {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 56%;
+  pointer-events: none;
+}
+.sk-poster-grid {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 56px;
+  width: 100%;
+  height: 38%;
+  opacity: .80;
+}
+.sk-poster-stage {
+  position: absolute;
+  bottom: 44px;
+  left: 4%;
+  right: 4%;
+  height: 18px;
+  background:
+    linear-gradient(180deg, #4b5668 0%, #1f2837 60%, #0c121d 100%);
+  border-top: 2px solid #36e4ff;
+  border-radius: 8px;
+  box-shadow:
+    0 -3px 26px rgba(54, 228, 255, .70),
+    0 18px 36px rgba(0, 0, 0, .55);
+  &::after {
+    // glowing top hairline overlay
+    content: '';
+    position: absolute;
+    inset: -2px 16px auto 16px;
+    height: 2px;
+    background: linear-gradient(90deg, transparent 0%, #4afcff 50%, transparent 100%);
+    filter: blur(.5px);
+    opacity: .9;
+  }
+}
+.sk-poster-stage-glow {
+  position: absolute;
+  bottom: -4px;
+  left: 8%;
+  right: 8%;
+  height: 80px;
+  background:
+    radial-gradient(70% 100% at 50% 100%, rgba(255, 120, 50, .55) 0%, rgba(255, 120, 50, 0) 100%);
+}
+.sk-poster-lineup-row {
+  position: absolute;
+  bottom: 56px;
+  left: 0;
+  right: 0;
+  display: flex;
+  justify-content: space-around;
+  align-items: flex-end;
+  padding: 0 5%;
+  height: 56%;
+}
+.sk-poster-mecha {
+  position: relative;
+  width: 22%;
+  max-width: 220px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  filter: drop-shadow(0 10px 18px rgba(0, 0, 0, .65));
+
+  // Player pose: subtly forward, with a gold rim suggestion
+  &[data-role="you"] {
+    transform: translateY(-2px) scale(1.04);
+    filter: drop-shadow(0 12px 22px rgba(0, 0, 0, .70)) drop-shadow(0 0 14px rgba(255, 216, 74, .35));
+  }
+  &[data-role="rookie"]  { transform: rotate(-1.5deg); }
+  &[data-role="bruiser"] { transform: rotate( 1.5deg); }
+  &[data-role="sniper"]  { transform: rotate(-1deg); }
+}
+.sk-poster-label {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: clamp(10px, 2.2vw, 13px);
+  font-weight: 700;
+  letter-spacing: .28em;
+  color: rgba(220, 235, 250, .92);
+  margin-top: 10px;
+  white-space: nowrap;
+  text-shadow: 0 1px 0 rgba(0,0,0,.6), 0 0 12px rgba(80, 200, 255, .35);
+
+  .sk-poster-mecha[data-role="you"] & {
+    color: #ffd84a;
+    text-shadow: 0 1px 0 rgba(0,0,0,.6), 0 0 14px rgba(255, 216, 74, .65);
+  }
+}
+
+// Re-open .sk-splash so the rest of the original BEM children (snow,
+// fighter, title, content, etc.) keep their parent scope.
+.sk-splash {
   &__snow {
     position: absolute;
     inset: 0;
