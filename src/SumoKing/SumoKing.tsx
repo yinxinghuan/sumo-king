@@ -41,8 +41,8 @@ export function SumoKing() {
   const { stickRef, view } = useJoystick(phase === 'playing');
 
   const {
-    isInAigram, submitScore, fetchGlobalLeaderboard, fetchFriendsLeaderboard,
-  } = useGameScore('sumo-king');
+    isInAigram, submitScore, fetchLeaderboard,
+  } = useGameScore();
 
   const haptic = useCallback((kind: 'light' | 'heavy') => {
     if (!('vibrate' in navigator)) return;
@@ -255,8 +255,7 @@ export function SumoKing() {
           gameName={t('title')}
           isInAigram={isInAigram}
           onClose={() => setShowLeaderboard(false)}
-          fetchGlobal={fetchGlobalLeaderboard}
-          fetchFriends={fetchFriendsLeaderboard}
+          fetch={fetchLeaderboard}
         />
       )}
     </div>

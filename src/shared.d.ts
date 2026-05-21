@@ -5,10 +5,11 @@ declare module '@shared/leaderboard' {
   import type { FC } from 'react';
 
   export interface LeaderboardEntry {
-    telegram_id: string;
+    user_id: string;
     name: string;
     avatar_url: string;
     score: number;
+    rank: number;
     isMe?: boolean;
   }
 
@@ -16,20 +17,27 @@ declare module '@shared/leaderboard' {
     gameName: string;
     isInAigram: boolean;
     onClose: () => void;
-    fetchGlobal: () => Promise<LeaderboardEntry[]>;
-    fetchFriends: () => Promise<LeaderboardEntry[]>;
+    fetch: () => Promise<LeaderboardEntry[]>;
   }
 
   export const Leaderboard: FC<LeaderboardProps>;
 
+  interface CurrentUser {
+    telegram_id: string;
+    name: string;
+    head_url: string;
+  }
+
   interface GameScoreResult {
     isInAigram: boolean;
     telegramId: string | null;
-    currentUser: { telegram_id: string; name: string; head_url: string } | null;
+    sessionId: string | null;
+    canRank: boolean;
+    currentUser: CurrentUser | null;
     submitScore: (score: number) => Promise<void>;
-    fetchGlobalLeaderboard: () => Promise<LeaderboardEntry[]>;
-    fetchFriendsLeaderboard: () => Promise<LeaderboardEntry[]>;
+    fetchLeaderboard: () => Promise<LeaderboardEntry[]>;
+    postToAigram: (photoUrl: string) => Promise<string | null>;
   }
 
-  export function useGameScore(gameId: string): GameScoreResult;
+  export function useGameScore(): GameScoreResult;
 }
